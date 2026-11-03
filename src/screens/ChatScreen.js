@@ -172,16 +172,16 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
   };
 
   return (
-    <View style={[styles.confirmCard, { backgroundColor: theme.dangerSoft, borderColor: theme.dangerBorder }]}>
+    <View style={[styles.confirmCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.borderStrong }]}>
       <View style={styles.confirmCardHeader}>
-        <Ionicons name="warning-outline" size={15} color={theme.dangerText} />
-        <Text style={[styles.confirmCardTitle, { color: theme.dangerText }]}>Needs your approval</Text>
+        <Ionicons name="shield-checkmark-outline" size={16} color={theme.brand} />
+        <Text style={[styles.confirmCardTitle, { color: theme.textPrimary }]}>Needs your approval</Text>
       </View>
       <Text style={[styles.confirmCardReason, { color: theme.textSecondary }]}>
         {parsed.reason || 'This action is irreversible or makes a change and needs confirmation.'}
       </Text>
       {!!detail && (
-        <View style={[styles.confirmCardCommandBox, { borderColor: theme.dangerBorder }]}>
+        <View style={[styles.confirmCardCommandBox, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
           <Text style={[styles.confirmCardCommandText, { color: theme.textPrimary }]} numberOfLines={4}>
             {detail}
           </Text>
@@ -194,21 +194,21 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
       )}
       <View style={styles.confirmCardActions}>
         <TouchableOpacity
-          style={[styles.confirmCardBtn, { borderColor: theme.border }]}
+          style={[styles.confirmCardBtn, { backgroundColor: theme.deny }]}
           onPress={onDismiss}
           disabled={busy}
         >
-          <Text style={[styles.confirmCardBtnText, { color: theme.textSecondary }]}>Dismiss</Text>
+          <Text style={[styles.confirmCardBtnText, { color: theme.textPrimary }]}>Deny</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.confirmCardBtn, styles.confirmCardApproveBtn, { backgroundColor: theme.dangerText }]}
+          style={[styles.confirmCardBtn, styles.confirmCardApproveBtn, { backgroundColor: theme.brandStrong }]}
           onPress={handleApprove}
           disabled={busy}
         >
           {busy ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Text style={[styles.confirmCardBtnText, { color: '#fff' }]}>Approve{isTerminal ? ' & run' : ''}</Text>
+            <Text style={[styles.confirmCardBtnText, { color: '#fff' }]}>Allow{isTerminal ? ' & run' : ''}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -239,7 +239,11 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
           onLongPress={isUser ? handleLongPress : undefined}
           style={[
             styles.bubble,
-            { backgroundColor: isUser ? theme.bubbleUser : theme.bubbleAssistant },
+            isUser
+              ? { backgroundColor: theme.bubbleUser }
+              : theme.assistantUsesBubble
+                ? { backgroundColor: theme.bubbleAssistant }
+                : styles.bubblePlainAssistant,
             message.is_error && {
               backgroundColor: theme.dangerSoft,
               borderWidth: 1,
@@ -441,7 +445,7 @@ function formatBrowsingStepLabel(stepInfo) {
   }
 }
 
-export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAgent, browserAgentActive = false, userName = 'there' }) {
+export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAgent, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
   const theme = useTheme();
   const {
     messages, isSending, error,
@@ -642,8 +646,55 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
       keyboardVerticalOffset={90}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={onOpenSidebar} hitSlop={12} style={styles.headerIconButton}>
-          <Ionicons name="menu-outline" size={24} color={theme.textPrimary} />
+        <TouchableOpacity
+          onPress={onOpenSidebar}
+          hitSlop={12}
+          style={[styles.chromeCircle, { backgroundColor: theme.chromeButton }]}
+          accessibilityLabel="Open menu"
+        >
+          <Ionicons name="menu-outline" size={22} color={theme.textPrimary} />
+        </TouchableOpacity>
+
+        <View style={[styles.modeSwitcher, { backgroundColor: theme.modeTrack }]}>
+          {[
+            { key: 'chat', label: 'Chat' },
+            { key: 'plan', label: 'Plan' },
+            { key: 'browse', label: 'Browse' },
+          ].map((mode) => {
+            const selected = activeMode === mode.key;
+            return (
+              <TouchableOpacity
+                key={mode.key}
+                style={[styles.modeSegment, selected && { backgroundColor: theme.modeSelected }]}
+                onPress={() => {
+                  if (mode.key === 'chat') return;
+                  if (mode.key === 'plan') onOpenPlan?.(null);
+                  if (mode.key === 'browse') onOpenBrowserAgent?.();
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={mode.label}
+              >
+                <Text
+                  style={[
+                    styles.modeSegmentText,
+                    { color: selected ? theme.textPrimary : theme.textTertiary },
+                  ]}
+                >
+                  {mode.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          onPress={onNewChat}
+          hitSlop={12}
+          style={[styles.chromeCircle, { backgroundColor: theme.chromeButton }]}
+          accessibilityLabel="New chat"
+        >
+          <Ionicons name="create-outline" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
       </View>
 
@@ -682,10 +733,34 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         contentContainerStyle={styles.messageList}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="sparkles" size={36} color={theme.brand} style={styles.brandMark} />
+            <View style={[styles.emptyGlyph, { borderColor: theme.borderStrong }]}>
+              <Ionicons name="flash-outline" size={28} color={theme.textTertiary} />
+            </View>
             <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
               {getGreeting()}, {userName}
             </Text>
+            <Text style={[styles.emptySubtitle, { color: theme.textTertiary }]}>
+              Ask anything
+            </Text>
+            <View style={styles.emptyChips}>
+              {[
+                { label: 'Plan a task', fill: 'chipBlue', icon: 'list-outline' },
+                { label: 'Browse the web', fill: 'chipGrey', icon: 'globe-outline' },
+                { label: 'Write code', fill: 'chipGrey', icon: 'code-slash-outline' },
+              ].map((chip) => (
+                <TouchableOpacity
+                  key={chip.label}
+                  style={[styles.emptyChip, { backgroundColor: theme[chip.fill] || theme.surfaceAlt }]}
+                  onPress={() => setInputText(chip.label)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name={chip.icon} size={14} color={chip.fill === 'chipBlue' ? theme.brand : theme.textPrimary} />
+                  <Text style={[styles.emptyChipText, { color: chip.fill === 'chipBlue' ? theme.brand : theme.textPrimary }]}>
+                    {chip.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         }
       />
@@ -786,86 +861,90 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </View>
       )}
 
-      <View style={[styles.inputBar, { borderTopColor: theme.border, backgroundColor: theme.surface }]}>
-        <TouchableOpacity
-          style={[styles.plusButton, { backgroundColor: theme.surfaceAlt }]}
-          onPress={() => setAttachmentVisible(true)}
-        >
-          <Ionicons name="add" size={22} color={theme.textPrimary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.browserToggle,
-            { backgroundColor: theme.surfaceAlt },
-            preferences.browser_access_enabled && styles.browserToggleActive,
-          ]}
-          onPress={() => setBrowserAccessEnabled(!preferences.browser_access_enabled)}
-          onLongPress={() => onOpenBrowserAgent?.()}
-          hitSlop={4}
-          accessibilityRole="button"
-          accessibilityState={{ selected: !!preferences.browser_access_enabled }}
-          accessibilityLabel="Toggle browser access on or off. Long-press to open the live browser view."
-        >
-          <Ionicons
-            name="globe-outline"
-            size={20}
-            color={preferences.browser_access_enabled ? '#D97757' : theme.textTertiary}
+      <View style={[styles.composerWrap, { backgroundColor: theme.background }]}>
+        <View style={[styles.composerCard, { backgroundColor: theme.composer }]}>
+          <TextInput
+            style={[styles.textInput, { color: theme.textPrimary }]}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="Ask anything…"
+            placeholderTextColor={theme.textTertiary}
+            multiline
+            maxLength={8000}
           />
-        </TouchableOpacity>
+          <View style={styles.composerControls}>
+            <TouchableOpacity
+              style={[styles.plusButton, { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface }]}
+              onPress={() => setAttachmentVisible(true)}
+              accessibilityLabel="Add attachment"
+            >
+              <Ionicons name="add" size={22} color={theme.textPrimary} />
+            </TouchableOpacity>
 
-        <TextInput
-          style={[styles.textInput, { color: theme.textPrimary }]}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Chat with ZAO…"
-          placeholderTextColor={theme.textTertiary}
-          multiline
-          maxLength={8000}
-        />
+            <View style={[styles.modelPill, { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface }]}>
+              <Ionicons name="rocket-outline" size={14} color={theme.textSecondary} />
+              <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
+                {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
+              </Text>
+            </View>
 
-        {/* Fixed-size slot that holds the send button, so the composer
-            never reflows when it appears/disappears. */}
-        <View style={styles.actionSlot}>
-          {/* Send-mode control: single orange circular send button. Only
-              rendered (and interactive) once there is text or an attachment. */}
-          <Animated.View
-            pointerEvents={hasText ? 'auto' : 'none'}
-            style={[
-              styles.sendButtonWrap,
-              {
-                opacity: composerAnim,
-                transform: [
-                  { scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
-                ],
-              },
-            ]}
-          >
-            {editingMessageId ? (
-              // Edit mode: Send is replaced with an explicit Save action
-              // (per spec) - Saving updates the original message in place
-              // via editMessage() rather than sending a new one.
-              <TouchableOpacity
-                style={[styles.sendButton, { backgroundColor: theme.mode === 'dark' ? '#F3F4F6' : '#111111' }]}
-                onPress={handleSaveEdit}
-                disabled={!hasText}
-              >
-                <Ionicons name="checkmark" size={22} color={theme.mode === 'dark' ? '#111111' : '#FFFFFF'} />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
+            <TouchableOpacity
+              style={[
+                styles.browserToggle,
+                { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface },
+                preferences.browser_access_enabled && { backgroundColor: theme.infoSoft },
+              ]}
+              onPress={() => setBrowserAccessEnabled(!preferences.browser_access_enabled)}
+              onLongPress={() => onOpenBrowserAgent?.()}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !!preferences.browser_access_enabled }}
+              accessibilityLabel="Toggle browser access on or off. Long-press to open the live browser view."
+            >
+              <Ionicons
+                name="globe-outline"
+                size={18}
+                color={preferences.browser_access_enabled ? theme.brand : theme.textTertiary}
+              />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }} />
+
+            <View style={styles.actionSlot}>
+              <Animated.View
+                pointerEvents={hasText ? 'auto' : 'none'}
                 style={[
-                  styles.sendButton,
-                  { backgroundColor: '#D97757' },
-                  isSending && { opacity: 0.6 },
+                  styles.sendButtonWrap,
+                  {
+                    opacity: composerAnim,
+                    transform: [
+                      { scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                    ],
+                  },
                 ]}
-                onPress={handleSend}
-                disabled={!hasText || isSending}
               >
-                <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            )}
-          </Animated.View>
+                {editingMessageId ? (
+                  <TouchableOpacity
+                    style={[styles.sendPill, { backgroundColor: theme.speak }]}
+                    onPress={handleSaveEdit}
+                    disabled={!hasText}
+                  >
+                    <Ionicons name="checkmark" size={18} color={theme.speakText} />
+                    <Text style={[styles.sendPillText, { color: theme.speakText }]}>Save</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.sendPill, { backgroundColor: theme.speak }, isSending && { opacity: 0.6 }]}
+                    onPress={handleSend}
+                    disabled={!hasText || isSending}
+                  >
+                    <Ionicons name="arrow-up" size={16} color={theme.speakText} />
+                    <Text style={[styles.sendPillText, { color: theme.speakText }]}>Send</Text>
+                  </TouchableOpacity>
+                )}
+              </Animated.View>
+            </View>
+          </View>
         </View>
       </View>
 
@@ -918,11 +997,35 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 10,
   },
-  headerIconButton: {
-    padding: 4,
+  chromeCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeSwitcher: {
+    flex: 1,
+    flexDirection: 'row',
+    borderRadius: 999,
+    padding: 3,
+    maxWidth: 280,
+  },
+  modeSegment: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeSegmentText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   messageList: {
     paddingVertical: 16,
@@ -935,15 +1038,46 @@ const styles = StyleSheet.create({
     paddingTop: 100,
     paddingHorizontal: 16,
   },
-  brandMark: {
-    marginBottom: 12,
+  emptyGlyph: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    transform: [{ rotate: '12deg' }],
   },
   emptyTitle: {
     fontSize: 26,
     fontWeight: '600',
   },
+  emptySubtitle: {
+    marginTop: 8,
+    fontSize: 15,
+  },
+  emptyChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 28,
+    paddingHorizontal: 8,
+  },
+  emptyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  emptyChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   bubbleRow: {
-    marginBottom: 10,
+    marginBottom: 12,
     flexDirection: 'row',
   },
   bubbleRowUser: {
@@ -960,19 +1094,25 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   bubbleColAssistant: {
-    width: '90%',
+    width: '92%',
     alignItems: 'flex-start',
   },
   bubble: {
     maxWidth: '100%',
-    borderRadius: 18,
+    borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 14,
+  },
+  bubblePlainAssistant: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 2,
+    borderRadius: 0,
   },
   generatedImage: {
     width: 260,
     height: 260,
-    borderRadius: 12,
+    borderRadius: 16,
   },
   bubbleImagePadding: {
     padding: 4,
@@ -1003,7 +1143,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
   viewPlanChipText: {
@@ -1018,7 +1158,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
   reasoningChipText: {
@@ -1029,7 +1169,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     alignSelf: 'stretch',
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
   },
   reasoningTraceText: {
@@ -1037,10 +1177,10 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   confirmCard: {
-    marginTop: 8,
+    marginTop: 10,
     alignSelf: 'stretch',
-    padding: 12,
-    borderRadius: 12,
+    padding: 14,
+    borderRadius: 16,
     borderWidth: 1,
   },
   confirmCardHeader: {
@@ -1049,18 +1189,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   confirmCardTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
   confirmCardReason: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     marginTop: 6,
   },
   confirmCardCommandBox: {
     marginTop: 8,
-    padding: 8,
-    borderRadius: 8,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
   },
   confirmCardCommandText: {
@@ -1075,13 +1215,12 @@ const styles = StyleSheet.create({
   confirmCardActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 10,
+    marginTop: 12,
   },
   confirmCardBtn: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1089,7 +1228,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   confirmCardBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
   switchChip: {
@@ -1139,7 +1278,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 14,
     borderWidth: 1,
   },
   attachmentPreviewIcon: {
@@ -1157,12 +1296,22 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  inputBar: {
+  composerWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  composerCard: {
+    borderRadius: 24,
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  composerControls: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderTopWidth: 1,
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
   },
   plusButton: {
     width: 36,
@@ -1170,7 +1319,18 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+  },
+  modelPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  modelPillText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   browserToggle: {
     width: 36,
@@ -1178,40 +1338,34 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
-    opacity: 0.55, // dull/inactive by default
-  },
-  browserToggleActive: {
-    opacity: 1, // "glows" when on - full opacity + tinted icon + soft glow ring
-    backgroundColor: 'rgba(217, 119, 87, 0.16)',
-    shadowColor: '#D97757',
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 4,
   },
   textInput: {
-    flex: 1,
     fontSize: 15,
     maxHeight: 100,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    minHeight: 28,
   },
   actionSlot: {
-    marginLeft: 6,
-    width: 46,
-    height: 46,
+    minWidth: 88,
+    height: 40,
     justifyContent: 'center',
+    alignItems: 'flex-end',
   },
   sendButtonWrap: {
     position: 'absolute',
     right: 0,
   },
-  sendButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  sendPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  sendPillText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

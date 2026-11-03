@@ -339,6 +339,8 @@ function AppShell() {
               onOpenSidebar={() => setSidebarVisible(true)}
               onOpenBrowserAgent={handleOpenBrowserAgent}
               onOpenPlan={handleOpenPlan}
+              onNewChat={handleNewChat}
+              activeMode="chat"
               browserAgentActive={screen === 'browserAgent' || isAgentRunning || awaitingHuman}
             />
           )}

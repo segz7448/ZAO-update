@@ -118,21 +118,21 @@ export default function SidebarDrawer({
       <Animated.View
         style={[
           styles.drawer,
-          { backgroundColor: theme.surface, transform: [{ translateX }] },
+          { backgroundColor: theme.background, transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           <View style={styles.header}>
-            <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>ZAO</Text>
+            <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Chats</Text>
           </View>
 
           <TouchableOpacity
-            style={[styles.newChatButton, { borderColor: theme.borderStrong }]}
+            style={[styles.newChatButton, { backgroundColor: theme.brand, borderColor: theme.brand }]}
             onPress={onNewChat}
           >
-            <Text style={[styles.newChatIcon, { color: theme.brand }]}>+</Text>
-            <Text style={[styles.newChatText, { color: theme.brand }]}>New chat</Text>
+            <Text style={[styles.newChatIcon, { color: theme.textInverse }]}>+</Text>
+            <Text style={[styles.newChatText, { color: theme.textInverse }]}>New chat</Text>
           </TouchableOpacity>
 
           <Text style={[styles.sectionLabel, { color: theme.textTertiary }]}>Recents</Text>
@@ -180,7 +180,7 @@ export default function SidebarDrawer({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   drawer: {
     position: 'absolute',
@@ -208,10 +208,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 16,
     marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 0,
+    borderRadius: 999,
   },
   newChatIcon: {
     fontSize: 18,
@@ -236,9 +236,9 @@ const styles = StyleSheet.create({
   },
   convoRow: {
     marginHorizontal: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
   },
   convoTitle: {
     fontSize: 14,

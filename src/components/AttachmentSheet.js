@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    borderRadius: 2,
+    borderRadius: 3,
     alignSelf: 'center',
     marginBottom: 12,
   },

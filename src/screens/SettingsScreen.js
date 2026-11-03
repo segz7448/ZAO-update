@@ -1589,8 +1589,12 @@ export default function SettingsScreen({ onOpenSidebar }) {
     >
       <View style={styles.header}>
         {onOpenSidebar && (
-          <TouchableOpacity onPress={onOpenSidebar} hitSlop={12} style={styles.headerIconButton}>
-            <Ionicons name="menu-outline" size={24} color={theme.textPrimary} />
+          <TouchableOpacity
+            onPress={onOpenSidebar}
+            hitSlop={12}
+            style={[styles.headerIconButton, { backgroundColor: theme.chromeButton, borderRadius: 20, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }]}
+          >
+            <Ionicons name="menu-outline" size={22} color={theme.textPrimary} />
           </TouchableOpacity>
         )}
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
@@ -1798,7 +1802,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 4,
   },
   modeOption: {

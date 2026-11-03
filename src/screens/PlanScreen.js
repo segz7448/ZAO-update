@@ -159,7 +159,7 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
               <Text style={styles.rejectBtnText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.approvalBtn, styles.approveBtn]}
+              style={[styles.approvalBtn, { backgroundColor: theme.brandStrong }]}
               onPress={() => onStartPlan?.(activePlan.id)}
             >
               <Text style={styles.approveBtnText}>Start plan</Text>
@@ -175,16 +175,16 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
           </Text>
           <View style={styles.approvalButtons}>
             <TouchableOpacity
-              style={[styles.approvalBtn, styles.rejectBtn]}
+              style={[styles.approvalBtn, styles.rejectBtn, { backgroundColor: theme.deny }]}
               onPress={() => onRejectStep?.(awaitingStep, awaitingStep.plan_id || activePlan.id)}
             >
-              <Text style={styles.rejectBtnText}>Skip this step</Text>
+              <Text style={[styles.rejectBtnText, { color: theme.textPrimary }]}>Deny</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.approvalBtn, styles.approveBtn]}
+              style={[styles.approvalBtn, { backgroundColor: theme.brandStrong }]}
               onPress={() => onApproveStep?.(awaitingStep, awaitingStep.plan_id || activePlan.id)}
             >
-              <Text style={styles.approveBtnText}>Approve & run</Text>
+              <Text style={styles.approveBtnText}>Allow</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -201,13 +201,13 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
           </Text>
           <View style={styles.approvalButtons}>
             <TouchableOpacity
-              style={[styles.approvalBtn, styles.rejectBtn]}
+              style={[styles.approvalBtn, styles.rejectBtn, { backgroundColor: theme.deny }]}
               onPress={() => onDismissCheckpoint?.(activePlan.checkpoint_plan_id || activePlan.id)}
             >
-              <Text style={styles.rejectBtnText}>Continue without checkpoint</Text>
+              <Text style={[styles.rejectBtnText, { color: theme.textPrimary }]}>Continue without checkpoint</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.approvalBtn, styles.approveBtn]}
+              style={[styles.approvalBtn, { backgroundColor: theme.brandStrong }]}
               onPress={() => onAcceptCheckpoint?.(activePlan.checkpoint_plan_id || activePlan.id)}
             >
               <Text style={styles.approveBtnText}>Mark checkpoint & continue</Text>
@@ -385,11 +385,11 @@ const styles = StyleSheet.create({
   },
   approvalReason: { fontSize: 13, fontWeight: '600' },
   approvalButtons: { flexDirection: 'row', gap: 10 },
-  approvalBtn: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: 'center' },
-  rejectBtn: { backgroundColor: '#F3F4F6' },
-  rejectBtnText: { color: '#374151', fontWeight: '600', fontSize: 13 },
-  approveBtn: { backgroundColor: '#16A34A' },
-  approveBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  approvalBtn: { flex: 1, paddingVertical: 12, borderRadius: 999, alignItems: 'center' },
+  rejectBtn: { backgroundColor: '#F3F5F7' },
+  rejectBtnText: { color: '#111111', fontWeight: '700', fontSize: 14 },
+  approveBtn: { backgroundColor: '#225CDD' },
+  approveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   checkpointBar: {
     padding: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
