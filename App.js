@@ -8,6 +8,7 @@ import BrowserAgentScreen from './src/screens/BrowserAgentScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import BrowserAgentPiP from './src/services/browserAgent/BrowserAgentPiP';
 import { BrowserAgentStream } from './src/services/browserAgent/browserAgentStream';
+import { attachBrowserCardStream } from './src/store/browserCardStore';
 import SidebarDrawer from './src/components/SidebarDrawer';
 import { initDatabase } from './src/db/database';
 import { registerBackgroundPlanTask } from './src/services/background/backgroundPlanTask';
@@ -157,6 +158,13 @@ function AppShell() {
       setBrowserTabs(s.tabs || []);
     });
     const offFrame = stream.on('frame', (data) => setFrameBase64(data));
+    // Inline chat Browser Card: anchored to the latest message of the
+    // current conversation at the moment a task starts.
+    const offCards = attachBrowserCardStream(stream, () => {
+      const chat = useChatStore.getState();
+      const msgs = chat.messages || [];
+      return { conversationId: chat.conversationId, anchorMessageId: msgs.length ? msgs[msgs.length - 1].id : null };
+    });
     const offConnection = stream.on('connectionChange', ({ connected, error }) => {
       setStreamConnected(connected);
       setStreamConnectionError(error || null);
@@ -166,6 +174,7 @@ function AppShell() {
     return () => {
       offStatus();
       offFrame();
+      offCards();
       offConnection();
     };
   }, []);
@@ -340,6 +349,8 @@ function AppShell() {
             <ChatScreen
               onOpenSidebar={() => setSidebarVisible(true)}
               onOpenBrowserAgent={handleOpenBrowserAgent}
+              onExpandBrowser={() => setScreen('browserAgent')}
+              browserStream={streamRef.current}
               onOpenPlan={handleOpenPlan}
               onNewChat={handleNewChat}
               activeMode="chat"
@@ -390,7 +401,7 @@ function AppShell() {
           full-screen mode isn't clipped by safe-area edges and paints
           underneath the chrome. */}
       <BrowserAgentPiP
-        visible={isAgentRunning || awaitingHuman || screen === 'browserAgent' || !!preferences?.browser_access_enabled}
+        visible={screen === 'browserAgent' /* compact floating PiP retired - the inline chat BrowserCard (src/components/BrowserCard.js) replaces it; this instance now only renders the fullscreen view */}
         stream={streamRef.current}
         fullScreen={screen === 'browserAgent'}
         fullScreenZoom={browserFullScreenZoom}

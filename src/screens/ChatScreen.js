@@ -18,6 +18,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { CircleButton, ZaoAvatar, AllowButton, DenyButton, GlassFill, glassSurface, haptic } from '../ui/ios';
+import BrowserCard, { BrowserMiniIndicator } from '../components/BrowserCard';
+import { useBrowserCardStore } from '../store/browserCardStore';
+import { mergeBrowserCards } from '../services/browserAgent/browserCardState';
 import { useChatStore } from '../store/chatStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import AttachmentSheet from '../components/AttachmentSheet';
@@ -440,8 +443,20 @@ function formatBrowsingStepLabel(stepInfo) {
   }
 }
 
-export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAgent, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
+export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAgent, onExpandBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
   const theme = useTheme();
+  // Inline browser cards (browserCardStore, fed by App's one BrowserAgentStream).
+  const browserCards = useBrowserCardStore((s) => s.cards);
+  const activeBrowserCardId = useBrowserCardStore((s) => s.activeCardId);
+  const toggleBrowserCard = useBrowserCardStore((s) => s.toggleCollapsed);
+  const dispatchBrowserCard = useBrowserCardStore((s) => s.dispatch);
+  const chatConversationId = useChatStore((s) => s.conversationId);
+  const [browserCardVisible, setBrowserCardVisible] = useState(true);
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    const id = useBrowserCardStore.getState().activeCardId;
+    setBrowserCardVisible(!id || viewableItems.some((v) => v.item?.id === id));
+  }).current;
+
   const {
     messages, isSending, error,
     browsingSteps, planProgress, planSteps, streamingText, streamingThinking,
@@ -455,6 +470,13 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
   const [attachmentVisible, setAttachmentVisible] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null); // { uri, name, mimeType, size }
   const listRef = useRef(null);
+  const listData = React.useMemo(() => mergeBrowserCards(messages, browserCards, chatConversationId), [messages, browserCards, chatConversationId]);
+  const activeBrowserCard = browserCards.find((c) => c.id === activeBrowserCardId && c.conversationId === chatConversationId);
+  const showBrowserMini = !!activeBrowserCard && !browserCardVisible && ['working', 'paused', 'live', 'reconnecting'].includes(activeBrowserCard.phase);
+  const scrollToBrowserCard = () => {
+    const index = listData.findIndex((x) => x.id === activeBrowserCardId);
+    if (index >= 0) listRef.current?.scrollToIndex({ index, viewPosition: 0.2, animated: true });
+  };
 
   // Persisted (see database.js's web_search_enabled/github_tools_enabled
   // migration) - these used to be local useState and silently reset to
@@ -724,11 +746,24 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </TouchableOpacity>
       )}
 
+      <View style={{ flex: 1 }}>
       <FlatList
         ref={listRef}
-        data={messages}
+        data={listData}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
+        onScrollToIndexFailed={() => {}}
+        renderItem={({ item }) => item.__browserCard ? (
+          <BrowserCard
+            card={item.card}
+            theme={theme}
+            stream={browserStream}
+            onExpand={onExpandBrowser}
+            onToggleCollapsed={() => toggleBrowserCard(item.card.id)}
+            onStopRequested={() => dispatchBrowserCard({ type: 'stopRequested' })}
+          />
+        ) : (
           <MessageBubble
             message={item}
             theme={theme}
@@ -781,6 +816,8 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
           </View>
         }
       />
+      {showBrowserMini && <BrowserMiniIndicator card={activeBrowserCard} theme={theme} onPress={scrollToBrowserCard} />}
+      </View>
 
       {isSending && (
         <View style={styles.typingIndicator}>
