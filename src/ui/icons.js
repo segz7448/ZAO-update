@@ -3,7 +3,7 @@
  * glyph in the app: {glyph, family, color, label}. Rendered as iOS
  * Settings-style tiles (colored rounded square, white glyph, gloss) via
  * <AppIconTile/>. Family is Ionicons; MDI only where Ionicons has no
- * matching glyph (Word / Excel / PowerPoint / PDF document marks).
+ * matching glyph (Word / Excel / PowerPoint / PDF / brand marks).
  * Unknown / future keys resolve to a polished neutral fallback tile, so a
  * new tool always gets a real icon, never a text tag.
  */
@@ -49,6 +49,43 @@ export const AREA_ICONS = {
   zip: { glyph: 'archive', family: I, color: '#A2845E', label: 'Archive' },
   checkpoint: { glyph: 'flag', family: I, color: '#34C759', label: 'Checkpoint' },
   general: { glyph: 'sparkles', family: I, color: '#636366', label: 'ZAO' },
+
+  // Settings rows
+  appearance: { glyph: 'contrast', family: I, color: '#5856D6', label: 'Appearance' },
+  usage: { glyph: 'stats-chart', family: I, color: '#34C759', label: 'Usage' },
+  connectors: { glyph: 'link-variant', family: M, color: '#007AFF', label: 'Connectors' },
+  vpn: { glyph: 'shield-lock', family: M, color: '#30D158', label: 'VPN' },
+  vault: { glyph: 'key-chain', family: M, color: '#FF9F0A', label: 'Vault' },
+  permissions: { glyph: 'shield-checkmark', family: I, color: '#5856D6', label: 'Permissions' },
+  activity: { glyph: 'pulse', family: I, color: '#0A84FF', label: 'Activity' },
+  appearance_auto: { glyph: 'contrast', family: I, color: '#5856D6', label: 'Auto' },
+  appearance_light: { glyph: 'sunny', family: I, color: '#FF9500', label: 'Light' },
+  appearance_dark: { glyph: 'moon', family: I, color: '#8E8E93', label: 'Dark' },
+
+  // Vault item types
+  vault_login: { glyph: 'globe', family: I, color: '#007AFF', label: 'Login' },
+  vault_api_key: { glyph: 'key', family: I, color: '#FF9500', label: 'API key' },
+  vault_secure_note: { glyph: 'document-text', family: I, color: '#AF52DE', label: 'Secure note' },
+  vault_ssh_key: { glyph: 'ssh', family: M, color: '#3A3A3C', label: 'SSH key' },
+  vault_connector_token: { glyph: 'link', family: I, color: '#0A84FF', label: 'Connector token' },
+  vault_generator: { glyph: 'dice', family: I, color: '#5856D6', label: 'Generator' },
+  vault_totp: { glyph: 'timer', family: I, color: '#FF2D55', label: 'One-time code' },
+
+  // Connectors (premium brand-style marks)
+  conn_github: { glyph: 'logo-github', family: I, color: '#1F2328', label: 'GitHub' },
+  conn_cloudflare: { glyph: 'cloud', family: I, color: '#F6821F', label: 'Cloudflare' },
+  conn_vercel: { glyph: 'triangle', family: I, color: '#000000', label: 'Vercel' },
+  conn_linear: { glyph: 'hexagon', family: M, color: '#5E6AD2', label: 'Linear' },
+  conn_gmail: { glyph: 'gmail', family: M, color: '#EA4335', label: 'Gmail' },
+  conn_outlook: { glyph: 'microsoft-outlook', family: M, color: '#0078D4', label: 'Outlook Mail' },
+  conn_google_drive: { glyph: 'google-drive', family: M, color: '#4285F4', label: 'Google Drive' },
+  conn_onedrive: { glyph: 'microsoft-onedrive', family: M, color: '#0078D4', label: 'OneDrive' },
+  conn_dropbox: { glyph: 'logo-dropbox', family: I, color: '#0061FF', label: 'Dropbox' },
+  conn_shopify: { glyph: 'shopping', family: M, color: '#96BF48', label: 'Shopify' },
+  conn_stripe: { glyph: 'flash', family: I, color: '#635BFF', label: 'Stripe' },
+  conn_slack: { glyph: 'logo-slack', family: I, color: '#4A154B', label: 'Slack' },
+  conn_notion: { glyph: 'note-text', family: M, color: '#000000', label: 'Notion' },
+  conn_google_calendar: { glyph: 'calendar', family: I, color: '#4285F4', label: 'Google Calendar' },
 };
 export const FALLBACK_ICON = { glyph: 'cube', family: I, color: '#8E8E93', label: 'Tool', fallback: true };
 

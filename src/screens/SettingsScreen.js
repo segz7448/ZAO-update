@@ -14,10 +14,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { IconTile, GlassFill, glassSurface, haptic } from '../ui/ios';
+import { AppIconTile } from '../ui/icons';
+import { StatusPill } from '../ui/GlassSheet';
+import { ConnectorsHub } from '../components/settings/ConnectorsHub';
+import { VaultSheet } from '../components/settings/VaultSheet';
+import { VpnSheet } from '../components/settings/VpnSheet';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
-import { checkBackendHealth, testBackendConnection, testOpenRouterKey } from '../services/backend/backendClient';
+import { checkBackendHealth } from '../services/backend/backendClient';
 import {
   getUsageCounts,
   getRecentUsageEvents,
@@ -27,20 +32,13 @@ import {
   hardDeleteMemory,
   clearAllMemories,
   getRecentCheckpoints,
-  getHooks,
-  createHook,
-  setHookEnabled,
-  deleteHook,
-  getWorktreeSessions,
 } from '../db/database';
 import { ACTIVE_MODEL } from '../config/localModels';
 import { rewindToCheckpoint } from '../services/filesystem/filesystemTool';
-import { closeWorktreeSession } from '../services/execution/worktrees';
 import { getRecentSpans } from '../services/execution/telemetry';
 import { PERMISSION_MODES } from '../services/execution/permissionModes';
 import { listReminders, cancelReminder, forgetReminder } from '../services/reminders/reminderService';
-import { BRAIN_ARCHITECTURES, BRAIN_ARCHITECTURE_LABELS, ZAO_BRAIN_PROFILE } from '../services/brain/brainTypes';
-import { MEMORY_TYPES, ZAO_MEMORY_PROFILE } from '../services/memory/memoryTypes';
+import { migrateGithubTokenIntoVault } from '../vault/vaultService';
 
 function GithubCredentialsSection({ status, onSaveUsername, onSaveToken, onRemove, theme }) {
   const [usernameValue, setUsernameValue] = useState(status.username || '');
@@ -639,6 +637,8 @@ function MemorySection({ preferences, onToggle, theme }) {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
+  const [memoryQuery, setMemoryQuery] = useState('');
+  const [memoryCategory, setMemoryCategory] = useState('all');
 
   const memoryEnabled = preferences?.memory_enabled !== false;
 
@@ -648,6 +648,15 @@ function MemorySection({ preferences, onToggle, theme }) {
     setMemories(result.success ? result.data.filter((m) => m.is_active) : []);
     setLoading(false);
   };
+
+  const memoryCategories = Array.from(new Set(memories.map((m) => m.category || 'general')));
+  const filteredMemories = memories.filter((m) => {
+    if (memoryCategory !== 'all' && (m.category || 'general') !== memoryCategory) return false;
+    const q = memoryQuery.trim().toLowerCase();
+    if (!q) return true;
+    return String(m.content || '').toLowerCase().includes(q)
+      || String(m.category || '').toLowerCase().includes(q);
+  });
 
   const openModal = async () => {
     setModalVisible(true);
@@ -742,22 +751,54 @@ function MemorySection({ preferences, onToggle, theme }) {
             </TouchableOpacity>
           </View>
 
+          <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: theme.surfaceAlt }}>
+              <Ionicons name="search" size={18} color={theme.textTertiary} />
+              <TextInput
+                style={{ flex: 1, color: theme.textPrimary, fontSize: 16 }}
+                placeholder="Search memories"
+                placeholderTextColor={theme.textTertiary}
+                value={memoryQuery}
+                onChangeText={setMemoryQuery}
+                autoCapitalize="none"
+              />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
+              {[{ id: 'all', label: 'All' }, ...memoryCategories.map((c) => ({ id: c, label: c }))].map((c) => {
+                const on = memoryCategory === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setMemoryCategory(c.id)}
+                    style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, backgroundColor: on ? theme.accentSoft : theme.surfaceAlt, borderColor: on ? theme.accent : theme.border }}
+                  >
+                    <Text style={{ color: on ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>{c.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           {loading ? (
             <ActivityIndicator size="large" color={theme.info} style={{ marginTop: 40 }} />
           ) : memories.length === 0 ? (
             <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
               Nothing saved yet. As you chat with ZAO, things worth remembering will show up here.
             </Text>
+          ) : filteredMemories.length === 0 ? (
+            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+              No memories match this search.
+            </Text>
           ) : (
             <FlatList
-              data={memories}
+              data={filteredMemories}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
               renderItem={({ item }) => (
                 <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary, marginBottom: 6, textTransform: 'uppercase' }}>
-                    {item.category || 'general'}
-                  </Text>
+                  <View style={{ marginBottom: 6 }}>
+                    <StatusPill theme={theme} tone="neutral" label={item.category || 'general'} />
+                  </View>
                   {editingId === item.id ? (
                     <>
                       <TextInput
@@ -927,7 +968,7 @@ const PERMISSION_MODE_INFO = {
   acceptEdits: { label: 'Accept edits', subtitle: 'File edits/creates/moves auto-run; deletes and terminal commands still confirm' },
   plan: { label: 'Plan', subtitle: 'Read-only - ZAO can look around and propose a plan, but nothing gets written or run' },
   auto: { label: 'Auto', subtitle: "Every edit and risky terminal command auto-runs. Catastrophic commands (rm -rf /, etc.) still can't run, in any mode" },
-  bypassPermissions: { label: 'Bypass permissions', subtitle: 'Same as Auto today - kept as its own mode in case it needs to diverge later' },
+  bypassPermissions: { label: 'Bypass permissions', subtitle: 'Skip confirmation prompts. Distinct from Auto — Bypass never asks; Auto may still confirm high-risk actions.' },
 };
 
 function PermissionModeSection({ preferences, onSetMode, theme }) {
@@ -976,7 +1017,6 @@ function CheckpointsSection({ theme }) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Restore',
-          style: 'destructive',
           onPress: async () => {
             setRestoringId(checkpoint.id);
             const result = await rewindToCheckpoint(checkpoint.id);
@@ -1029,7 +1069,7 @@ function CheckpointsSection({ theme }) {
                     {restoringId === item.id ? (
                       <ActivityIndicator size="small" color={theme.info} />
                     ) : (
-                      <Text style={{ color: '#DC2626', fontWeight: '600' }}>Restore</Text>
+                      <Text style={{ color: theme.info, fontWeight: '600' }}>Restore</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -1258,6 +1298,8 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
   const [spans, setSpans] = useState([]);
   const [loading, setLoading] = useState(false);
   const [otelValue, setOtelValue] = useState(preferences?.otel_export_endpoint || '');
+  const [activityQuery, setActivityQuery] = useState('');
+  const [activityStatus, setActivityStatus] = useState('all');
 
   const load = async () => {
     setLoading(true);
@@ -1265,6 +1307,14 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
     setSpans(result || []);
     setLoading(false);
   };
+
+  const filteredSpans = spans.filter((item) => {
+    if (activityStatus !== 'all' && item.status !== activityStatus) return false;
+    const q = activityQuery.trim().toLowerCase();
+    if (!q) return true;
+    const name = String(item.tool_name || item.name || '').toLowerCase();
+    return name.includes(q) || String(item.error_message || '').toLowerCase().includes(q);
+  });
 
   const openModal = async () => {
     setModalVisible(true);
@@ -1302,31 +1352,66 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
               <Ionicons name="close" size={26} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
+          <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: theme.surfaceAlt }}>
+              <Ionicons name="search" size={18} color={theme.textTertiary} />
+              <TextInput
+                style={{ flex: 1, color: theme.textPrimary, fontSize: 16 }}
+                placeholder="Filter activity"
+                placeholderTextColor={theme.textTertiary}
+                value={activityQuery}
+                onChangeText={setActivityQuery}
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              {['all', 'ok', 'error', 'running'].map((s) => {
+                const on = activityStatus === s;
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    onPress={() => setActivityStatus(s)}
+                    style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, backgroundColor: on ? theme.accentSoft : theme.surfaceAlt, borderColor: on ? theme.accent : theme.border }}
+                  >
+                    <Text style={{ color: on ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '600', textTransform: 'capitalize' }}>{s}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
           {loading ? (
             <ActivityIndicator size="large" color={theme.info} style={{ marginTop: 40 }} />
           ) : spans.length === 0 ? (
             <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
               Nothing logged yet - this fills in as ZAO makes tool calls.
             </Text>
+          ) : filteredSpans.length === 0 ? (
+            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+              No activity matches this filter.
+            </Text>
           ) : (
             <FlatList
-              data={spans}
+              data={filteredSpans}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-              renderItem={({ item }) => (
-                <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary, textTransform: 'uppercase' }}>
-                      {new Date(item.started_at).toLocaleString()}
-                    </Text>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: item.status === 'error' ? '#DC2626' : item.status === 'running' ? theme.textTertiary : '#16A34A' }}>
-                      {item.status}
-                    </Text>
+              renderItem={({ item }) => {
+                const tone = item.status === 'error' ? 'bad' : item.status === 'running' ? 'warn' : 'ok';
+                return (
+                  <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                    <AppIconTile k={item.tool_name || item.name || 'activity'} size={32} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: theme.textSecondary, textTransform: 'uppercase' }}>
+                          {new Date(item.started_at).toLocaleString()}
+                        </Text>
+                        <StatusPill theme={theme} tone={tone} label={item.status || 'ok'} />
+                      </View>
+                      <Text style={{ color: theme.textPrimary, fontSize: 14, marginTop: 4 }}>{item.tool_name || item.name}</Text>
+                      {item.error_message ? <Text style={{ color: theme.dangerText, fontSize: 12, marginTop: 4 }}>{item.error_message}</Text> : null}
+                    </View>
                   </View>
-                  <Text style={{ color: theme.textPrimary, fontSize: 14, marginTop: 4 }}>{item.tool_name || item.name}</Text>
-                  {item.error_message ? <Text style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{item.error_message}</Text> : null}
-                </View>
-              )}
+                );
+              }}
             />
           )}
         </View>
@@ -1505,7 +1590,7 @@ function UsageModal({ visible, onClose, theme }) {
                 </Text>
               </View>
               <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 8 }]}>
-                Runs on the Alibaba Cloud VM - no third-party API call, no rate limit, no per-call cost. Manage in Settings &gt; Server Connection.
+                Runs on your private backend — no third-party API call, no rate limit, no per-call cost.
               </Text>
             </View>
 
@@ -1570,18 +1655,33 @@ function UsageRow({ label, value, theme, last = false }) {
 export default function SettingsScreen({ onOpenSidebar }) {
   const theme = useTheme();
   const {
-    preferences, apiKeyStatus, loadPreferences,
-    setApiKey, removeApiKey, setGithubUsername,
+    preferences, loadPreferences,
     setMemoryEnabled, setPermissionMode, setOtelExportEndpoint,
   } = usePreferencesStore();
   const { themePreference, loadThemePreference, setThemePreference } = useThemeStore();
 
   const [usageModalVisible, setUsageModalVisible] = useState(false);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [vpnOpen, setVpnOpen] = useState(false);
 
   useEffect(() => {
     loadPreferences();
     loadThemePreference();
+    migrateGithubTokenIntoVault(preferences?.github_username).catch(() => {});
   }, []);
+
+  const NavRow = ({ iconKey, label, onPress, detail }) => (
+    <TouchableOpacity
+      style={styles.navRow}
+      onPress={() => { haptic.light(); onPress?.(); }}
+    >
+      <AppIconTile k={iconKey} size={30} />
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>{label}</Text>
+      {detail ? <StatusPill theme={theme} tone="neutral" label={detail} /> : null}
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  );
 
   return (
     <>
@@ -1638,51 +1738,25 @@ export default function SettingsScreen({ onOpenSidebar }) {
       <SectionHeader title="Usage" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <TouchableOpacity
-          style={styles.navRow}
-          onPress={() => { haptic.light(); setUsageModalVisible(true); }}
-        >
-          <IconTile name="stats-chart" color={theme.tileColors.green} />
-          <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Usage & Activity</Text>
-          <Ionicons name="chevron-forward" size={17} color={theme.textTertiary} />
-        </TouchableOpacity>
+        <NavRow iconKey="usage" label="Usage & Activity" onPress={() => setUsageModalVisible(true)} />
       </View>
 
-      <SectionHeader title="Server Connection" theme={theme} />
+      <SectionHeader title="Connectors" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <BackendConnectionSection preferences={preferences} theme={theme} />
+        <NavRow iconKey="connectors" label="Connectors" onPress={() => setConnectorsOpen(true)} detail="Hub" />
       </View>
 
-      <SectionHeader title="GitHub" theme={theme} />
+      <SectionHeader title="Vault" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <GithubCredentialsSection
-          status={apiKeyStatus.github}
-          onSaveUsername={setGithubUsername}
-          onSaveToken={(token) => setApiKey('github', token)}
-          onRemove={() => removeApiKey('github')}
-          theme={theme}
-        />
-        <Text style={[styles.helperText, { color: theme.textTertiary }]}>
-          GitHub needs your own Personal Access Token since repo actions have to happen under your account. Generate one at github.com/settings/tokens with the "repo" scope.
-        </Text>
+        <NavRow iconKey="vault" label="Vault" onPress={() => setVaultOpen(true)} detail="Secure" />
       </View>
 
-      <SectionHeader title="Browser Agent" theme={theme} />
+      <SectionHeader title="VPN" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <BrowserAgentSection preferences={preferences} theme={theme} />
-        <Text style={[styles.helperText, { color: theme.textTertiary }]}>
-          Lets ZAO actually browse the live web — search, open pages, log in, click, fill forms, and read content — using a real browser on the VM, driven by Ox Alpha (via OpenRouter) acting as an agent.
-        </Text>
-      </View>
-
-
-      <SectionHeader title="Filesystem" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <FilesystemAccessSection preferences={preferences} theme={theme} />
+        <NavRow iconKey="vpn" label="VPN" onPress={() => setVpnOpen(true)} detail="Soon" />
       </View>
 
       <SectionHeader title="Memory" theme={theme} />
@@ -1709,34 +1783,31 @@ export default function SettingsScreen({ onOpenSidebar }) {
         <CheckpointsSection theme={theme} />
       </View>
 
-      <SectionHeader title="Hooks" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <HooksSection theme={theme} />
-      </View>
-
-      <SectionHeader title="Worktrees" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <WorktreesSection theme={theme} />
-      </View>
-
       <SectionHeader title="Agent Activity" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
         <AuditTrailSection preferences={preferences} onSetOtelEndpoint={setOtelExportEndpoint} theme={theme} />
-      </View>
-
-      <SectionHeader title="About ZAO" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <ArchitectureSection theme={theme} />
       </View>
     </ScrollView>
 
     <UsageModal
       visible={usageModalVisible}
       onClose={() => setUsageModalVisible(false)}
+      theme={theme}
+    />
+    <ConnectorsHub
+      visible={connectorsOpen}
+      onClose={() => setConnectorsOpen(false)}
+      theme={theme}
+    />
+    <VaultSheet
+      visible={vaultOpen}
+      onClose={() => setVaultOpen(false)}
+      theme={theme}
+    />
+    <VpnSheet
+      visible={vpnOpen}
+      onClose={() => setVpnOpen(false)}
       theme={theme}
     />
     </>

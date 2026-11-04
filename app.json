@@ -56,7 +56,16 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "./plugins/withCleartextTraffic"
-    ]
+      "./plugins/withCleartextTraffic",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "ZAO uses Face ID to unlock your Vault and reveal secrets."
+        }
+      ]
+    ],
+    "extra": {
+      "githubOAuthClientId": ""
+    }
   }
 }
