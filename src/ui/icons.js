@@ -86,6 +86,7 @@ export const AREA_ICONS = {
   conn_linear: { brand: 'linear', color: '#5E6AD2', label: 'Linear' },
   conn_jira: { brand: 'jira', color: '#0052CC', label: 'Jira' },
   conn_figma: { brand: 'figma', color: '#F24E1E', label: 'Figma' },
+  conn_google: { brand: 'google', color: '#FFFFFF', label: 'Google' },
   conn_gmail: { brand: 'gmail', color: '#EA4335', label: 'Gmail' },
   conn_discord: { brand: 'discord', color: '#5865F2', label: 'Discord' },
   conn_telegram: { brand: 'telegram', color: '#26A5E4', label: 'Telegram' },
@@ -172,6 +173,7 @@ const HOST_BRAND = [
   [/bitbucket\.org$/i, 'conn_bitbucket'],
   [/cloudflare\.com$/i, 'conn_cloudflare'],
   [/shopify\.com$/i, 'conn_shopify'],
+  [/accounts\.google\.com$|google\.com$/i, 'conn_google'],
   [/gmail\.com$|mail\.google\.com$/i, 'conn_gmail'],
   [/drive\.google\.com$|docs\.google\.com$/i, 'conn_google_drive'],
   [/sheets\.google\.com$/i, 'conn_googlesheets'],
@@ -263,7 +265,13 @@ export function vaultIconKey(item) {
 
 /** Resolve a website/domain string to an icon key (brand SVG or globe). Never letters. */
 export function brandIconForWebsite(website) {
-  return vaultIconKey({ website, type: 'login' });
+  const host = String(website || '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/^www\./i, '')
+    .toLowerCase();
+  if (!host) return 'web'; // globe glyph until a domain is entered
+  return vaultIconKey({ website: host, type: 'login' });
 }
 
 /** Tool name -> registry key (specific first, then prefix families). */
@@ -295,6 +303,16 @@ export function iconFor(key) {
 export function Glyph({ entry, size, color }) {
   if (entry.brand) {
     const brand = BRAND_ICONS[entry.brand] || BRAND_ICONS[BRAND_KEY_FOR[entry.brand]];
+    if (brand?.paths?.length) {
+      const s = Math.round(size);
+      return (
+        <Svg width={s} height={s} viewBox="0 0 24 24" accessibilityLabel={entry.label}>
+          {brand.paths.map((p, i) => (
+            <Path key={i} d={p.d} fill={p.fill || color} />
+          ))}
+        </Svg>
+      );
+    }
     if (brand?.path) {
       const s = Math.round(size);
       return (

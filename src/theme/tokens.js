@@ -180,10 +180,10 @@ export const darkTheme = {
 
   textPrimary: '#FFFFFF',
   textSecondary: '#9A9A9E',
-  textTertiary: '#6A6A6E',
+  textTertiary: '#A1A1A6',
   textInverse: '#000000',
-  chevron: '#6A6A6E',
-  timestamp: '#6A6A6E',
+  chevron: '#A1A1A6',
+  timestamp: '#A1A1A6',
   icon: '#B0B0B4',
 
   accent: '#2B88D3',              // Muse dark link blue

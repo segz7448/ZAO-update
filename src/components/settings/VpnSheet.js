@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
@@ -49,7 +49,7 @@ function Gauge({ theme, label, percent, tone }) {
             strokeLinecap="round"
           />
         </Svg>
-        <View style={StyleSheet.absoluteFillObject, { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: theme.textPrimary, fontWeight: '800', fontSize: 16 }}>
             {percent == null ? '—' : `${percent}%`}
           </Text>
@@ -332,10 +332,16 @@ function BuyFlow({ theme, count, onDone, onCancel }) {
   );
 }
 
-function DetailView({ theme, item, reputation, onBack, onChanged }) {
+function DetailView({ theme, item, reputation, usage, isActive, providerLabel, onBack, onChanged }) {
   const [busy, setBusy] = useState(false);
+  const [routing, setRouting] = useState(!!isActive);
   const trust = reputation?.trustPercent ?? null;
   const tone = reputation?.trustTone || 'ok';
+  const left = daysLeft(item.expiresAt);
+  const renewBy = item.renewBy ? new Date(item.renewBy) : null;
+  const expires = item.expiresAt ? new Date(item.expiresAt) : null;
+
+  useEffect(() => { setRouting(!!isActive); }, [isActive, item?.id]);
 
   const act = async (fn, label) => {
     setBusy(true);
@@ -344,6 +350,27 @@ function DetailView({ theme, item, reputation, onBack, onChanged }) {
     if (!r?.success) Alert.alert(label, r?.error || 'Failed');
     else { haptic.success(); await onChanged?.(); }
     return r;
+  };
+
+  const toggleRoute = async (next) => {
+    setRouting(next);
+    if (next) {
+      const r = await act(() => vpn.activate(item.id), 'Route agent');
+      if (!r?.success) setRouting(false);
+    } else {
+      Alert.alert(
+        'Stop routing?',
+        'Agent traffic will leave this VPN until you route again.',
+        [
+          { text: 'Keep routing', style: 'cancel', onPress: () => setRouting(true) },
+          { text: 'Stop', style: 'destructive', onPress: async () => {
+            // Demo: activating another is preferred; deactivate leaves none active.
+            const r = await act(() => vpn.deactivate(), 'Stop routing');
+            if (!r?.success) setRouting(true);
+          } },
+        ]
+      );
+    }
   };
 
   return (
@@ -357,25 +384,80 @@ function DetailView({ theme, item, reputation, onBack, onChanged }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <CountryFlag code={item.countryCode} size={40} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }}>{item.city}</Text>
+            <Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }}>
+              {item.countryCode} · {item.city}
+            </Text>
             <Text style={{ color: theme.textSecondary }}>{item.region} · {item.country}</Text>
             <Text style={{ color: theme.textTertiary, marginTop: 4 }}>{item.ip} · {item.protocol}</Text>
           </View>
+          <StatusPill theme={theme} tone={routing ? 'ok' : 'neutral'} label={routing ? 'Routing' : 'Ready'} />
         </View>
         {tone !== 'ok' ? (
           <View style={{ marginTop: 10 }}>
             <StatusPill theme={theme} tone={tone === 'bad' ? 'bad' : 'warn'} label={`Trust ${trust}%`} />
           </View>
         ) : null}
+        <Text style={{ color: theme.textTertiary, fontSize: 11, marginTop: 10, fontWeight: '600' }}>
+          {providerLabel || 'Demo provider: no real charge'}
+        </Text>
+      </GlassCard>
+
+      <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Live usage</Text>
+      <GlassCard theme={theme}>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+          <StatusPill theme={theme} tone="info" label={`↓ ${formatBps(usage?.downBps)}`} />
+          <StatusPill theme={theme} tone="info" label={`↑ ${formatBps(usage?.upBps)}`} />
+        </View>
+        <Text style={{ color: theme.textPrimary, fontSize: 14, fontWeight: '600' }}>
+          {formatBytes(usage?.usedBytes)} / {formatBytes(usage?.quotaBytes)} used
+        </Text>
+        <View style={[styles.quotaBar, { backgroundColor: theme.surfaceAlt, marginTop: 8 }]}>
+          <View style={{
+            width: `${Math.min(100, ((usage?.usedBytes || 0) / Math.max(1, usage?.quotaBytes || 1)) * 100)}%`,
+            backgroundColor: theme.accent, height: '100%', borderRadius: 4,
+          }} />
+        </View>
+      </GlassCard>
+
+      <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Expiry</Text>
+      <GlassCard theme={theme}>
+        <View style={styles.metaGrid}>
+          <Meta theme={theme} label="Expires" value={expires ? expires.toLocaleDateString() : '—'} />
+          <Meta theme={theme} label="Countdown" value={left != null ? `${left} day${left === 1 ? '' : 's'}` : '—'} />
+          <Meta theme={theme} label="Renew by" value={renewBy ? renewBy.toLocaleDateString() : '—'} />
+          <Meta theme={theme} label="Plan" value={item.planLabel || item.planId || '30 days'} />
+        </View>
+        {left != null && left <= 7 ? (
+          <Text style={{ color: theme.warning || theme.accent, fontSize: 13, marginTop: 4, fontWeight: '600' }}>
+            Renew by {renewBy ? renewBy.toLocaleDateString() : 'soon'} to keep this IP.
+          </Text>
+        ) : null}
+      </GlassCard>
+
+      <GlassCard theme={theme}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Ionicons name="navigate" size={22} color={theme.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.textPrimary, fontWeight: '700', fontSize: 16 }}>Route agent through this VPN</Text>
+            <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
+              Browser and fetch traffic on the agent computer use this dedicated IP.
+            </Text>
+          </View>
+          <Switch
+            value={routing}
+            onValueChange={(v) => { haptic.light(); toggleRoute(v); }}
+            trackColor={{ false: theme.surfaceAlt, true: theme.accentSoft || theme.accent }}
+            thumbColor={routing ? theme.accent : theme.textTertiary}
+          />
+        </View>
       </GlassCard>
 
       <TrustPanel theme={theme} reputation={reputation} />
 
       <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Actions</Text>
       <GlassCard theme={theme}>
-        <ActionRow theme={theme} icon="flash" label="Set active · route agent" onPress={() => act(() => vpn.activate(item.id), 'Activate')} />
-        <ActionRow theme={theme} icon="calendar" label="Renew" sub="Extend with demo pricing" onPress={() => act(() => vpn.renew(item.id, '30d'), 'Renew')} />
-        <ActionRow theme={theme} icon="swap-horizontal" label="Change location" sub="Move to another country/state" onPress={() => {
+        <ActionRow theme={theme} icon="calendar" label="Renew" sub="Extend plan · demo pricing" onPress={() => act(() => vpn.renew(item.id, '30d'), 'Renew')} />
+        <ActionRow theme={theme} icon="swap-horizontal" label="Change" sub="Move to another country or state" onPress={() => {
           Alert.alert('Change location', 'Pick a new region', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'California', onPress: () => act(() => vpn.change(item.id, 'us-ca'), 'Change') },
@@ -386,8 +468,8 @@ function DetailView({ theme, item, reputation, onBack, onChanged }) {
         <ActionRow
           theme={theme}
           icon="refresh"
-          label="Release IP"
-          sub="Use when trust has dropped so accounts aren't flagged"
+          label="Release"
+          sub="Replace a blacklisted or low-trust IP in the same region"
           onPress={() => {
             Alert.alert(
               'Release this IP?',
@@ -404,6 +486,7 @@ function DetailView({ theme, item, reputation, onBack, onChanged }) {
           icon="trash"
           label="Delete"
           danger
+          sub="Remove this VPN permanently"
           onPress={() => {
             Alert.alert('Delete VPN?', 'This cannot be undone.', [
               { text: 'Cancel', style: 'cancel' },
@@ -477,12 +560,13 @@ export function VpnSheet({ visible, onClose, theme }) {
   const openDetail = async (item) => {
     setSelected(item);
     setView('detail');
-    const r = await vpn.reputation(item.id);
+    const [r, u] = await Promise.all([vpn.reputation(item.id), vpn.usage(item.id)]);
     if (r.data) setReputation(r.data);
     else {
       const st = await vpn.status();
       if (st.data?.active?.id === item.id) setReputation(st.data.reputation);
     }
+    if (u.data) setUsage(u.data);
   };
 
   return (
@@ -499,6 +583,9 @@ export function VpnSheet({ visible, onClose, theme }) {
           theme={theme}
           item={selected}
           reputation={reputation}
+          usage={usage}
+          isActive={selected?.id === activeId}
+          providerLabel={status?.provider?.label}
           onBack={() => { setView('home'); setSelected(null); refresh(); }}
           onChanged={refresh}
         />

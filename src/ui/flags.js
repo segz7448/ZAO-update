@@ -3,7 +3,7 @@
  * Simplified / stylized for 24–40px tiles.
  */
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import Svg, { Rect, Path, Circle, G } from 'react-native-svg';
 
 const FLAG = {
@@ -153,11 +153,18 @@ export function CountryFlag({ code, size = 28, style }) {
   const Comp = FLAG[cc];
   const w = size * 1.5;
   const h = size;
-  const r = Math.round(size * 0.18);
+  const r = Math.round(size * 0.22);
   return (
     <View
       accessibilityLabel={`${cc} flag`}
-      style={[{ width: w, height: h, borderRadius: r, overflow: 'hidden', backgroundColor: '#ccc' }, style]}
+      style={[{
+        width: w, height: h, borderRadius: r, overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255,255,255,0.35)',
+        shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 }, elevation: 2,
+      }, style]}
     >
       {Comp ? <Comp w={w} h={h} /> : (
         <Svg width={w} height={h} viewBox="0 0 60 40">
