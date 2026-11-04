@@ -42,19 +42,34 @@ function CategoryChips({ theme, active, onChange }) {
 }
 
 function ConnectorRow({ theme, connector, connected, onPress }) {
+  const caps = (connector.capabilities || []).slice(0, 2);
   return (
-    <TouchableOpacity style={styles.row} onPress={() => { haptic.light(); onPress(connector); }}>
-      <AppIconTile k={connector.icon} size={36} />
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={[styles.rowTitle, { color: theme.textPrimary }]}>{connector.name}</Text>
-        <Text style={{ color: theme.textSecondary, fontSize: 13 }} numberOfLines={1}>{connector.description}</Text>
+    <TouchableOpacity
+      style={[styles.connCard, { borderColor: theme.glassHighlight }]}
+      onPress={() => { haptic.light(); onPress(connector); }}
+      activeOpacity={0.85}
+    >
+      <View style={styles.row}>
+        <AppIconTile k={connector.icon} size={40} />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={[styles.rowTitle, { color: theme.textPrimary }]}>{connector.name}</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }} numberOfLines={2}>{connector.description}</Text>
+        </View>
+        <StatusPill
+          theme={theme}
+          tone={connected ? 'ok' : connector.wiring === 'live' ? 'neutral' : 'info'}
+          label={connected ? 'Connected' : connector.wiring === 'live' ? 'Not connected' : 'Soon'}
+        />
       </View>
-      <StatusPill
-        theme={theme}
-        tone={connected ? 'ok' : connector.wiring === 'live' ? 'neutral' : 'info'}
-        label={connected ? 'Connected' : connector.wiring === 'live' ? 'Not connected' : 'Soon'}
-      />
-      <Ionicons name="chevron-forward" size={16} color={theme.chevron} style={{ marginLeft: 6 }} />
+      {caps.length ? (
+        <View style={styles.capChips}>
+          {caps.map((c) => (
+            <View key={c} style={[styles.capChip, { backgroundColor: theme.surfaceAlt }]}>
+              <Text style={{ color: theme.textTertiary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{c}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -331,19 +346,18 @@ export function ConnectorsHub({ visible, onClose, theme }) {
           CONNECTOR_CATEGORIES.filter((c) => grouped[c.id]).map((cat) => (
             <View key={cat.id}>
               <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{cat.label}</Text>
-              <GlassCard theme={theme} style={{ paddingVertical: 4, paddingHorizontal: 4 }}>
-                {grouped[cat.id].map((connector, i) => (
-                  <View key={connector.id}>
-                    {i > 0 ? <View style={[styles.divider, { backgroundColor: theme.separator }]} /> : null}
+              <View style={{ gap: 10 }}>
+                {grouped[cat.id].map((connector) => (
+                  <GlassCard key={connector.id} theme={theme} radius={16} style={{ padding: 10 }}>
                     <ConnectorRow
                       theme={theme}
                       connector={connector}
                       connected={connector.id === 'github' && githubConnected}
                       onPress={(c) => setSelectedId(c.id)}
                     />
-                  </View>
+                  </GlassCard>
                 ))}
-              </GlassCard>
+              </View>
             </View>
           ))
         )}
@@ -381,7 +395,10 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4,
     marginTop: 16, marginBottom: 8, marginLeft: 4,
   },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 2 },
+  connCard: { borderRadius: 12 },
+  capChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, paddingHorizontal: 2 },
+  capChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, maxWidth: '48%' },
   rowTitle: { fontSize: 16, fontWeight: '600' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 58 },
   avatar: { width: 56, height: 56, borderRadius: 28 },

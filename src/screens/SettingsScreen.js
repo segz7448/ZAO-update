@@ -91,8 +91,8 @@ function GithubCredentialsSection({ status, onSaveUsername, onSaveToken, onRemov
     <View style={styles.keyRow}>
       <View style={styles.keyRowHeader}>
         <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>GitHub</Text>
-        <View style={[styles.statusPill, { backgroundColor: status.configured ? '#DCFCE7' : theme.surfaceAlt }]}>
-          <Text style={[styles.statusPillText, { color: status.configured ? '#166534' : theme.textSecondary }]}>
+        <View style={[styles.statusPill, { backgroundColor: status.configured ? theme.successSoft || theme.accentSoft : theme.surfaceAlt }]}>
+          <Text style={[styles.statusPillText, { color: status.configured ? theme.success : theme.textSecondary }]}>
             {status.configured ? `Connected · ${status.username}` : 'Not set'}
           </Text>
         </View>
@@ -187,8 +187,8 @@ function FilesystemAccessSection({ preferences, theme }) {
     <View style={styles.keyRow}>
       <View style={styles.keyRowHeader}>
         <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Download folder</Text>
-        <View style={[styles.statusPill, { backgroundColor: granted ? '#DCFCE7' : theme.surfaceAlt }]}>
-          <Text style={[styles.statusPillText, { color: granted ? '#166534' : theme.textSecondary }]}>
+        <View style={[styles.statusPill, { backgroundColor: granted ? (theme.successSoft || theme.accentSoft) : theme.surfaceAlt }]}>
+          <Text style={[styles.statusPillText, { color: granted ? theme.success : theme.textSecondary }]}>
             {granted ? 'Granted' : 'Not granted'}
           </Text>
         </View>
@@ -278,8 +278,8 @@ function VmConnectionSection({ preferences, theme }) {
     setTesting(false);
   };
 
-  const pillColor = status.ready ? '#DCFCE7' : status.reachable ? '#FEF3C7' : '#FEE2E2';
-  const pillTextColor = status.ready ? '#166534' : status.reachable ? '#92400E' : '#991B1B';
+  const pillColor = status.ready ? (theme.successSoft || theme.accentSoft) : status.reachable ? (theme.warningSoft || theme.accentSoft) : (theme.dangerSoft);
+  const pillTextColor = status.ready ? theme.success : status.reachable ? theme.warning : theme.dangerText;
   const pillLabel = !checked
     ? 'Not checked'
     : status.ready
@@ -400,8 +400,8 @@ function ModelApiKeySection({ preferences, theme }) {
   // "Unsaved" rather than a stale Verified/Invalid pill from a different
   // string. Once Test & Save runs again (or the edit is reverted back to
   // savedToken), this clears and the real result shows again.
-  const pillColor = isDirty ? '#FEF3C7' : status.authValid ? '#DCFCE7' : status.authValid === false ? '#FEE2E2' : '#FEF3C7';
-  const pillTextColor = isDirty ? '#92400E' : status.authValid ? '#166534' : status.authValid === false ? '#991B1B' : '#92400E';
+  const pillColor = isDirty ? (theme.warningSoft || theme.accentSoft) : status.authValid ? (theme.successSoft || theme.accentSoft) : status.authValid === false ? theme.dangerSoft : (theme.warningSoft || theme.accentSoft);
+  const pillTextColor = isDirty ? theme.warning : status.authValid ? theme.success : status.authValid === false ? theme.dangerText : theme.warning;
   const pillLabel = isDirty ? 'Unsaved' : !checked ? 'Not checked' : status.authValid ? 'Verified' : status.authValid === false ? 'Invalid' : 'Unknown';
 
   return (
@@ -535,8 +535,8 @@ function OpenRouterApiKeySection({ preferences, theme }) {
   // Same isDirty-aware pill logic as ModelApiKeySection above - a value
   // that's been edited away from savedKey shows "Unsaved," not a stale
   // Verified/Invalid result that described a different string.
-  const pillColor = isDirty ? '#FEF3C7' : status.valid ? '#DCFCE7' : status.valid === false ? '#FEE2E2' : '#FEF3C7';
-  const pillTextColor = isDirty ? '#92400E' : status.valid ? '#166534' : status.valid === false ? '#991B1B' : '#92400E';
+  const pillColor = isDirty ? (theme.warningSoft || theme.accentSoft) : status.valid ? (theme.successSoft || theme.accentSoft) : status.valid === false ? theme.dangerSoft : (theme.warningSoft || theme.accentSoft);
+  const pillTextColor = isDirty ? theme.warning : status.valid ? theme.success : status.valid === false ? theme.dangerText : theme.warning;
   const pillLabel = isDirty ? 'Unsaved' : !checked ? 'Not checked' : status.valid ? 'Verified' : status.valid === false ? 'Invalid' : 'Unknown';
 
   return (
@@ -824,10 +824,10 @@ function MemorySection({ preferences, onToggle, theme }) {
                           <Text style={{ color: theme.info, fontWeight: '600' }}>Edit</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleForget(item.id)}>
-                          <Text style={{ color: '#DC2626', fontWeight: '600' }}>Forget</Text>
+                          <Text style={{ color: theme.dangerText, fontWeight: '600' }}>Forget</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleHardDelete(item.id)}>
-                          <Text style={{ color: '#DC2626', fontWeight: '600', textDecorationLine: 'underline' }}>Delete permanently</Text>
+                          <Text style={{ color: theme.dangerText, fontWeight: '600', textDecorationLine: 'underline' }}>Delete permanently</Text>
                         </TouchableOpacity>
                       </View>
                     </>
@@ -839,10 +839,10 @@ function MemorySection({ preferences, onToggle, theme }) {
 
           {memories.length > 0 && (
             <TouchableOpacity
-              style={{ marginHorizontal: 20, marginBottom: 24, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#DC2626' }}
+              style={{ marginHorizontal: 20, marginBottom: 24, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: theme.dangerBorder }}
               onPress={handleClearAll}
             >
-              <Text style={{ color: '#DC2626', fontWeight: '700' }}>Clear all memories</Text>
+              <Text style={{ color: theme.dangerText, fontWeight: '700' }}>Clear all memories</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -892,7 +892,7 @@ function RemindersSection({ theme }) {
     scheduled: { label: 'Scheduled', color: theme.info },
     fired: { label: 'Delivered', color: theme.textSecondary },
     cancelled: { label: 'Cancelled', color: theme.textSecondary },
-    failed: { label: 'Failed to schedule', color: '#DC2626' },
+    failed: { label: 'Failed to schedule', color: theme.dangerText },
   };
 
   return (
@@ -943,7 +943,7 @@ function RemindersSection({ theme }) {
                     <View style={{ flexDirection: 'row', gap: 20 }}>
                       {item.status === 'scheduled' && (
                         <TouchableOpacity onPress={() => handleCancel(item.id)}>
-                          <Text style={{ color: '#DC2626', fontWeight: '600' }}>Cancel</Text>
+                          <Text style={{ color: theme.dangerText, fontWeight: '600' }}>Cancel</Text>
                         </TouchableOpacity>
                       )}
                       {item.status !== 'scheduled' && (
@@ -1166,7 +1166,7 @@ function HooksSection({ theme }) {
                   <Text style={{ color: theme.textPrimary, fontSize: 13, marginBottom: 4 }}>matcher: {item.matcher}</Text>
                   <Text style={{ color: theme.textPrimary, fontSize: 14, fontFamily: 'monospace', marginBottom: 10 }}>{item.command}</Text>
                   <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                    <Text style={{ color: '#DC2626', fontWeight: '600' }}>Delete</Text>
+                    <Text style={{ color: theme.dangerText, fontWeight: '600' }}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1502,8 +1502,8 @@ function BrowserAgentSection({ preferences, theme }) {
     <View style={styles.keyRow}>
       <View style={styles.keyRowHeader}>
         <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Browser agent</Text>
-        <View style={[styles.statusPill, { backgroundColor: preferences.browser_access_enabled ? '#DCFCE7' : theme.surfaceAlt }]}>
-          <Text style={[styles.statusPillText, { color: preferences.browser_access_enabled ? '#166534' : theme.textSecondary }]}>
+        <View style={[styles.statusPill, { backgroundColor: preferences.browser_access_enabled ? (theme.successSoft || theme.accentSoft) : theme.surfaceAlt }]}>
+          <Text style={[styles.statusPillText, { color: preferences.browser_access_enabled ? theme.success : theme.textSecondary }]}>
             {preferences.browser_access_enabled ? 'On' : 'Off'}
           </Text>
         </View>
@@ -1520,11 +1520,11 @@ function BrowserAgentSection({ preferences, theme }) {
 }
 
 
-function RadioOption({ label, subtitle, selected, onPress, theme, icon, tileColor }) {
+function RadioOption({ label, subtitle, selected, onPress, theme, iconKey }) {
   return (
     <TouchableOpacity style={styles.modeOption} onPress={() => { haptic.select(); onPress?.(); }} accessibilityState={{ selected }}>
       <View style={styles.modeOptionLeft}>
-        {icon ? <IconTile name={icon} color={tileColor || theme.tileColors.blue} /> : null}
+        {iconKey ? <AppIconTile k={iconKey} size={30} /> : null}
         <View style={{ flex: 1 }}>
           <Text style={[styles.modeTitle, { color: theme.textPrimary }]}>{label}</Text>
           {subtitle ? <Text style={[styles.modeSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text> : null}
@@ -1583,14 +1583,14 @@ function UsageModal({ visible, onClose, theme }) {
             <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
               <View style={styles.usageHealthRow}>
-                <View style={[styles.healthDot, { backgroundColor: backendStatus.ready ? '#22C55E' : backendStatus.connected ? '#F59E0B' : '#EF4444' }]} />
+                <View style={[styles.healthDot, { backgroundColor: backendStatus.ready ? theme.success : backendStatus.connected ? theme.warning : theme.danger }]} />
                 <Text style={[styles.usageRowLabel, { color: theme.textPrimary, flex: 1 }]}>{ACTIVE_MODEL.label}</Text>
                 <Text style={[styles.helperText, { color: theme.textTertiary }]}>
                   {backendStatus.ready ? 'Ready' : backendStatus.connected ? 'Loading' : 'Not connected'}
                 </Text>
               </View>
               <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 8 }]}>
-                Runs on your private backend — no third-party API call, no rate limit, no per-call cost.
+                Chat completions go through your private backend using your own OpenRouter key. Usage below counts local agent activity (browser, GitHub, files).
               </Text>
             </View>
 
@@ -1712,8 +1712,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'auto'}
           onPress={() => setThemePreference('auto')}
           theme={theme}
-          icon="contrast"
-          tileColor={theme.tileColors.indigo}
+          iconKey="appearance_auto"
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
@@ -1721,8 +1720,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'light'}
           onPress={() => setThemePreference('light')}
           theme={theme}
-          icon="sunny"
-          tileColor={theme.tileColors.orange}
+          iconKey="appearance_light"
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
@@ -1730,8 +1728,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'dark'}
           onPress={() => setThemePreference('dark')}
           theme={theme}
-          icon="moon"
-          tileColor={theme.tileColors.gray}
+          iconKey="appearance_dark"
         />
       </View>
 

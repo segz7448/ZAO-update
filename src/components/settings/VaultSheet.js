@@ -3,8 +3,9 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Switch, AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { GlassSheet, GlassCard, StatusPill } from '../../ui/GlassSheet';
-import { AppIconTile } from '../../ui/icons';
+import { AppIconTile, vaultIconKey } from '../../ui/icons';
 import { haptic } from '../../ui/ios';
 import {
   listVaultItems, getVaultSecuritySummary, revealVaultSecret,
@@ -29,13 +30,6 @@ const TYPE_FILTERS = [
   { id: 'connector_token', label: 'Connectors' },
 ];
 
-const TYPE_ICON = {
-  login: 'vault_login',
-  api_key: 'vault_api_key',
-  secure_note: 'vault_secure_note',
-  ssh_key: 'vault_ssh_key',
-  connector_token: 'vault_connector_token',
-};
 
 function strengthTone(score) {
   if (score <= 1) return 'bad';
@@ -50,14 +44,49 @@ function formatRelative(ts) {
   return d.toLocaleString();
 }
 
+function formatTotpCode(code) {
+  const digits = String(code || '').replace(/\s/g, '');
+  if (digits.length === 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  return code || '------';
+}
+
+/** Small countdown ring beside a large spaced code — never overflow the circle. */
 function TotpRing({ remaining, step = 30, theme, code }) {
   const pct = totpProgress(remaining, step);
+  const size = 44;
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - Math.max(0, Math.min(1, pct)));
   return (
     <View style={styles.totpWrap}>
-      <View style={[styles.totpRing, { borderColor: theme.accent }]}>
-        <View style={[styles.totpFill, { height: `${Math.round(pct * 100)}%`, backgroundColor: theme.accentSoft }]} />
-        <Text style={[styles.totpCode, { color: theme.textPrimary }]}>{code || '------'}</Text>
-        <Text style={{ color: theme.textSecondary, fontSize: 11 }}>{remaining}s</Text>
+      <View style={styles.totpRingBox}>
+        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={theme.borderStrong}
+            strokeWidth={stroke}
+            fill="none"
+          />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={theme.accent}
+            strokeWidth={stroke}
+            fill="none"
+            strokeDasharray={`${c} ${c}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
+        </Svg>
+        <Text style={[styles.totpRemain, { color: theme.textSecondary }]}>{remaining}s</Text>
+      </View>
+      <View style={{ flex: 1, marginLeft: 14 }}>
+        <Text style={[styles.totpCode, { color: theme.textPrimary }]}>{formatTotpCode(code)}</Text>
+        <Text style={{ color: theme.textTertiary, fontSize: 12, marginTop: 2 }}>Authenticator code</Text>
       </View>
     </View>
   );
@@ -199,7 +228,7 @@ function ItemDetail({ theme, item, onBack, onChanged }) {
 
       <GlassCard theme={theme}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <AppIconTile k={TYPE_ICON[item.type] || 'vault'} size={44} />
+          <AppIconTile k={vaultIconKey(item)} size={44} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }}>{item.title}</Text>
             {item.username ? <Text style={{ color: theme.textSecondary, marginTop: 2 }}>{item.username}</Text> : null}
@@ -531,7 +560,7 @@ export function VaultSheet({ visible, onClose, theme }) {
                         style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}
                         onPress={() => { haptic.light(); setSelected(item); }}
                       >
-                        <AppIconTile k={TYPE_ICON[item.type] || 'vault'} size={32} />
+                        <AppIconTile k={vaultIconKey(item)} size={32} />
                         <View style={{ flex: 1, marginLeft: 12 }}>
                           <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: 16 }}>{item.title}</Text>
                           <Text style={{ color: theme.textSecondary, fontSize: 13 }} numberOfLines={1}>
@@ -555,7 +584,7 @@ export function VaultSheet({ visible, onClose, theme }) {
                         style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}
                         onPress={() => { haptic.light(); setSelected(item); }}
                       >
-                        <AppIconTile k="vault_connector_token" size={32} />
+                        <AppIconTile k={vaultIconKey(item)} size={32} />
                         <View style={{ flex: 1, marginLeft: 12 }}>
                           <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: 16 }}>{item.title}</Text>
                           <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Managed by connector</Text>
@@ -594,10 +623,8 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   generated: { fontFamily: 'monospace', fontSize: 15, borderWidth: 1, borderRadius: 10, padding: 12 },
   secretBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
-  totpWrap: { alignItems: 'center' },
-  totpRing: {
-    width: 120, height: 120, borderRadius: 60, borderWidth: 4, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  totpFill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  totpCode: { fontSize: 28, fontWeight: '800', letterSpacing: 2, fontVariant: ['tabular-nums'] },
+  totpWrap: { flexDirection: 'row', alignItems: 'center' },
+  totpRingBox: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  totpRemain: { position: 'absolute', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  totpCode: { fontSize: 28, fontWeight: '800', letterSpacing: 1, fontVariant: ['tabular-nums'] },
 });

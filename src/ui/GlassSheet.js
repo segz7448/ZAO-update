@@ -83,12 +83,11 @@ export function GlassCard({ theme, children, style, radius = 14 }) {
 
 /** Dark-mode adaptive status pill. */
 export function StatusPill({ theme, tone = 'neutral', label }) {
-  const dark = theme.mode === 'dark';
   const tones = {
-    ok: { bg: dark ? 'rgba(48,209,88,0.18)' : '#DCFCE7', fg: dark ? '#30D158' : '#166534' },
-    warn: { bg: dark ? 'rgba(255,159,10,0.18)' : '#FEF3C7', fg: dark ? '#FF9F0A' : '#92400E' },
-    bad: { bg: dark ? 'rgba(255,69,58,0.18)' : '#FEE2E2', fg: dark ? '#FF453A' : '#991B1B' },
-    info: { bg: dark ? 'rgba(10,132,255,0.18)' : '#DBEAFE', fg: dark ? '#0A84FF' : '#1D4ED8' },
+    ok: { bg: theme.successSoft, fg: theme.success },
+    warn: { bg: theme.warningSoft, fg: theme.warning },
+    bad: { bg: theme.dangerSoft, fg: theme.dangerText },
+    info: { bg: theme.infoSoft, fg: theme.info },
     neutral: { bg: theme.surfaceAlt, fg: theme.textSecondary },
   };
   const t = tones[tone] || tones.neutral;

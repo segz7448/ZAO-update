@@ -133,7 +133,9 @@ export const lightTheme = {
   switchTrack: '#34C759',         // mix: iOS system green switches app-wide
 
   success: '#1FA855',
+  successSoft: 'rgba(31,168,85,0.12)',
   warning: '#E08600',
+  warningSoft: 'rgba(224,134,0,0.12)',
   danger: '#E5484D',
   dangerSoft: 'rgba(229,72,77,0.10)',
   dangerBorder: 'rgba(229,72,77,0.30)',
@@ -213,7 +215,9 @@ export const darkTheme = {
   switchTrack: '#30D158',
 
   success: '#30D158',
+  successSoft: 'rgba(48,209,88,0.18)',
   warning: '#FF9F0A',
+  warningSoft: 'rgba(255,159,10,0.18)',
   danger: '#FF453A',
   dangerSoft: 'rgba(255,69,58,0.15)',
   dangerBorder: 'rgba(255,69,58,0.35)',

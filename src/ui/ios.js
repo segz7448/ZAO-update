@@ -58,13 +58,13 @@ export function glassSurface(theme, radius = 16) {
   return {
     backgroundColor: 'transparent',
     borderRadius: radius,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.glassHighlight,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 22,
     shadowOpacity: theme.glassShadowOpacity,
-    elevation: 0,
+    elevation: 3,
   };
 }
 
