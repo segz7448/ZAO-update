@@ -16,6 +16,9 @@
  *     { type: 'resumeAfterHuman' }                            - hand control back to the model after manual intervention
  *     { type: 'cancel' }                                      - stop the current task
  *     { type: 'manualClick', x, y }                           - tap-to-click on the live view (coordinates relative to the 412x915 streamed viewport)
+ *     { type: 'manualClick', x, y, clickCount? }              - clickCount 2 = double-click (trackpad mode)
+ *     { type: 'manualMouseMove'|'manualMouseDown'|'manualMouseUp', x, y } - trackpad pointer (viewport px, clamped)
+ *     { type: 'manualWheel', dx, dy, x?, y? }                 - trackpad two-finger scroll at the pointer
  *     { type: 'manualType', text }                            - type into whatever's focused
  *     { type: 'manualKey', key }                              - press a single key (Enter, Tab, Backspace, etc.)
  *     { type: 'navigateTo', url }                              - address-bar navigation on the active tab
@@ -115,7 +118,19 @@ function registerBrowserAgentStream(httpServer, config, log, sendToModel) {
             await sendStatus();
             break;
           case 'manualClick':
-            await session.manualClick(msg.x, msg.y);
+            await session.manualClick(msg.x, msg.y, msg.clickCount);
+            break;
+          case 'manualMouseMove':
+            await session.manualMouseMove(msg.x, msg.y);
+            break;
+          case 'manualMouseDown':
+            await session.manualMouseDown(msg.x, msg.y);
+            break;
+          case 'manualMouseUp':
+            await session.manualMouseUp(msg.x, msg.y);
+            break;
+          case 'manualWheel':
+            await session.manualWheel(msg.dx, msg.dy, msg.x, msg.y);
             break;
           case 'manualType':
             await session.manualType(msg.text || '');

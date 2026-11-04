@@ -29,6 +29,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Image, Text, StyleSheet, PanResponder } from 'react-native';
 import ClickRingOverlay from '../../components/ClickRingOverlay';
+import TrackpadLayer from '../../components/TrackpadLayer';
 
 // Must match server/browserAgent.js's AgentSession context viewport
 // exactly - manual tap coordinates are computed relative to this, then
@@ -70,9 +71,10 @@ function computeFitBox(containerWidth, containerHeight, zoom) {
  * @param {string|null} [props.connectionError] - human-readable reason the connection isn't open, if known
  * @param {boolean} [props.isRunning] - whether a task is actively running on the PC session right now
  * @param {object} [props.target] - card.lastTarget from step messages, drawn as the click ring (optional)
+ * @param {boolean} [props.trackpad] - takeover trackpad mode (see components/TrackpadLayer.js)
  * @param {number} [props.zoom] - 0-1 display scale, see header. Defaults to 1 (fill the container) for any caller that doesn't pass one, so existing usage is unaffected.
  */
-export default function BrowserStreamView({ frameBase64, stream, interactive = false, connected = false, connectionError = null, isRunning = false, zoom = 1, target = null }) {
+export default function BrowserStreamView({ frameBase64, stream, interactive = false, connected = false, connectionError = null, isRunning = false, zoom = 1, target = null, trackpad = false }) {
   const [layoutSize, setLayoutSize] = useState({ width: STREAM_VIEWPORT.width, height: STREAM_VIEWPORT.height });
 
   const onLayout = useCallback((e) => {
@@ -84,7 +86,7 @@ export default function BrowserStreamView({ frameBase64, stream, interactive = f
 
   const handleTap = useCallback(
     (locationX, locationY) => {
-      if (!interactive || !stream) return;
+      if (!interactive || trackpad || !stream) return;
       const box = computeFitBox(layoutSize.width, layoutSize.height, zoom);
       const imgX = locationX - box.offsetX;
       const imgY = locationY - box.offsetY;
@@ -98,15 +100,19 @@ export default function BrowserStreamView({ frameBase64, stream, interactive = f
       const scaleY = STREAM_VIEWPORT.height / box.height;
       stream.manualClick(Math.round(imgX * scaleX), Math.round(imgY * scaleY));
     },
-    [interactive, stream, layoutSize, zoom]
+    [interactive, trackpad, stream, layoutSize, zoom]
   );
+  // PanResponder is created once - read the latest handler through a ref so
+  // taps see the current interactive/trackpad/layout values.
+  const tapRef = useRef(handleTap);
+  tapRef.current = handleTap;
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderRelease: (e) => {
         const { locationX, locationY } = e.nativeEvent;
-        handleTap(locationX, locationY);
+        tapRef.current(locationX, locationY);
       },
     })
   ).current;
@@ -144,6 +150,8 @@ export default function BrowserStreamView({ frameBase64, stream, interactive = f
       <ClickRingOverlay target={target} visible={!!frameBase64 && !interactive} fit={{ mode: 'contain', align: 'center', zoom }} />
       {/* Transparent touch-capture layer - only actually forwards taps to the PC when interactive is true, but always present so onLayout has a stable measurement surface. */}
       <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
+      {/* Trackpad mode (takeover only): relative pointer + gestures replace direct taps. */}
+      {interactive && trackpad && frameBase64 ? <TrackpadLayer stream={stream} viewW={layoutSize.width} viewH={layoutSize.height} zoom={zoom} /> : null}
     </View>
   );
 }

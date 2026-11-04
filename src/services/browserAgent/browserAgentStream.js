@@ -193,8 +193,26 @@ export class BrowserAgentStream {
   }
 
   /** Manual tap on the live view - x/y relative to the streamed 412x915 viewport (see BrowserStreamView.js for the coordinate scaling). */
-  manualClick(x, y) {
-    return this._send({ type: 'manualClick', x, y });
+  manualClick(x, y, clickCount) {
+    return this._send(clickCount === 2 ? { type: 'manualClick', x, y, clickCount: 2 } : { type: 'manualClick', x, y });
+  }
+
+  /** Trackpad mode pointer events - same 412x915 viewport coords as manualClick. Callers throttle moves (~30/s). */
+  manualMouseMove(x, y) {
+    return this._send({ type: 'manualMouseMove', x, y });
+  }
+
+  manualMouseDown(x, y) {
+    return this._send({ type: 'manualMouseDown', x, y });
+  }
+
+  manualMouseUp(x, y) {
+    return this._send({ type: 'manualMouseUp', x, y });
+  }
+
+  /** Two-finger scroll in trackpad mode: wheel delta in page px, at the pointer. */
+  manualWheel(dx, dy, x, y) {
+    return this._send({ type: 'manualWheel', dx, dy, x, y });
   }
 
   /** Manual text input into whatever's focused on the page (tap the field first via manualClick). */

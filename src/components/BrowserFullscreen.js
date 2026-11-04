@@ -5,7 +5,8 @@
  * Replaces the retired BrowserAgentPiP fullscreen + BrowserAgentScreen
  * chrome pair. It renders the SAME App-owned BrowserAgentStream (no new
  * socket) through BrowserStreamView, with glass iOS chrome on top:
- *   top:    round collapse chevron, site pill (tap to type a URL), square
+ *   top:    round collapse chevron, site pill (tap to type a URL), [keyboard
+ *           button in takeover+trackpad], square
  *           Stop (stream.cancel) while a task runs or waits on you
  *   page:   the live frame in a rounded sheet (tappable during takeover)
  *   bottom: a live status pill streaming the agent's current step, plus a
@@ -22,7 +23,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, BackHandler, Animated, Easing, PanResponder, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import BrowserStreamView from '../services/browserAgent/BrowserStreamView';
 import { haptic } from '../ui/ios';
 import { domainFromUrl, phaseLight, iconForAction, formatStepTime } from '../services/browserAgent/browserCardState';
@@ -38,6 +39,7 @@ export default function BrowserFullscreen({
   const [takeover, setTakeover] = useState(false); // manual control: page taps are forwarded
   const [kbValue, setKbValue] = useState(''); // hidden keyboard sink (no visible text box)
   const kbRef = useRef(null);
+  const [trackpad, setTrackpad] = useState(false); // takeover only: relative pointer instead of direct taps
   const [addressText, setAddressText] = useState('');
   const [editingAddress, setEditingAddress] = useState(false);
   const dispatchCard = useBrowserCardStore((s) => s.dispatch);
@@ -99,6 +101,7 @@ export default function BrowserFullscreen({
     haptic.success();
     kbRef.current?.blur();
     setTakeover(false);
+    setTrackpad(false);
     setKbValue('');
     if (awaitingHuman) stream?.resumeAfterHuman();
   };
@@ -113,7 +116,7 @@ export default function BrowserFullscreen({
   };
   const statusText = !connected
     ? (connectionError ? 'Not connected to the PC' : 'Reconnecting…')
-    : takeover ? 'You have control - tap the page'
+    : takeover ? 'You have control'
     : awaitingHuman ? (humanReason ? `Needs you: ${humanReason}` : 'Needs you to take over')
     : isRunning ? (activeCard?.caption || 'Working on it…')
     : hasSession ? (activeCard?.caption || 'Idle') : 'Waiting for a task from chat';
@@ -136,7 +139,7 @@ export default function BrowserFullscreen({
   return (
     <View style={[StyleSheet.absoluteFill, styles.root]}>
       <Animated.View style={[styles.fill, enterStyle]}>
-        {/* top chrome: round collapse chevron · site pill · square stop */}
+        {/* top chrome: round collapse chevron · site pill · [keyboard, trackpad mode] · square stop */}
         <View style={[styles.top, { paddingTop: insets.top + 6 }]}>
           <TouchableOpacity onPress={close} style={[styles.round, glassShadow]} accessibilityRole="button" accessibilityLabel="Collapse browser" hitSlop={6}>
             <GlassLayer radius={24} /><Ionicons name="chevron-down" size={22} color="#fff" />
@@ -154,9 +157,14 @@ export default function BrowserFullscreen({
                 onBlur={() => setEditingAddress(false)} autoFocus autoCapitalize="none" autoCorrect={false} keyboardType="url"
                 placeholder="Enter address" placeholderTextColor="#8E8E93" returnKeyType="go" selectTextOnFocus />
             ) : (
-              <Text style={styles.siteText} numberOfLines={1}>{domain || 'New tab'}</Text>
+              <Text style={[styles.siteText, { flexShrink: 1 }]} numberOfLines={1}>{domain || 'New tab'}</Text>
             )}
           </TouchableOpacity>
+          {takeover && trackpad && !editingAddress ? (
+            <TouchableOpacity onPress={() => { haptic.select(); kbRef.current?.focus(); }} style={[styles.round, glassShadow]} accessibilityRole="button" accessibilityLabel="Show keyboard" hitSlop={6}>
+              <GlassLayer radius={24} /><MaterialCommunityIcons name="keyboard-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+          ) : null}
           {active ? (
             <TouchableOpacity onPress={stop} style={[styles.round, glassShadow]} accessibilityRole="button" accessibilityLabel="Stop task" hitSlop={6}>
               <GlassLayer radius={24} /><Ionicons name="stop" size={17} color="#fff" />
@@ -169,15 +177,17 @@ export default function BrowserFullscreen({
         {/* live page in a rounded sheet; taps are forwarded only in takeover */}
         <View style={styles.pageWrap}>
           <Animated.View pointerEvents="none" style={[styles.glow, { opacity: glow }]} />
-          <View style={[styles.page, takeover && styles.pageTakeover]} onTouchEnd={takeover ? () => kbRef.current?.focus() : undefined}>
-            <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={takeover} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} target={activeCard?.lastTarget || null} />
+          <View style={[styles.page, takeover && styles.pageTakeover]} onTouchEnd={takeover && !trackpad ? () => kbRef.current?.focus() : undefined}>
+            <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={takeover} trackpad={takeover && trackpad} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} target={activeCard?.lastTarget || null} />
             {takeover ? (
               <View style={styles.banner} pointerEvents="none">
                 <GlassLayer radius={18} />
-                <View style={styles.bannerIcon}><Ionicons name="hand-left" size={14} color="#fff" /></View>
+                <View style={styles.bannerIcon}>{trackpad
+                  ? <MaterialCommunityIcons name="cursor-default-click-outline" size={16} color="#fff" />
+                  : <Ionicons name="hand-left" size={14} color="#fff" />}</View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bannerTitle}>You're in control</Text>
-                  <Text style={styles.bannerSub} numberOfLines={1}>Tap the page to click · the keyboard types into it</Text>
+                  <Text style={styles.bannerTitle}>{trackpad ? 'Trackpad mode' : "You're in control"}</Text>
+                  <Text style={styles.bannerSub} numberOfLines={2}>{trackpad ? 'Drag to move · tap to click · two fingers to scroll' : 'Tap the page to click · the keyboard types into it'}</Text>
                 </View>
               </View>
             ) : awaitingHuman ? (
@@ -199,12 +209,21 @@ export default function BrowserFullscreen({
 
         {/* bottom: big glass status pill (tap / swipe up for step history) + Take over / Done pill */}
         <View style={[styles.bottomRow, { marginBottom: Math.max(12, insets.bottom) }]}>
+          {takeover ? (
+            <TouchableOpacity onPress={() => { haptic.select(); kbRef.current?.blur(); setTrackpad((t) => !t); }}
+              style={[styles.tpToggle, trackpad ? styles.tpOn : glassShadow]} accessibilityRole="switch" accessibilityState={{ checked: trackpad }}
+              accessibilityLabel="Trackpad mode" hitSlop={4}>
+              {trackpad ? null : <GlassLayer radius={30} />}
+              <MaterialCommunityIcons name="cursor-default-click-outline" size={24} color="#fff" />
+            </TouchableOpacity>
+          ) : null}
           <Pressable {...pan.panHandlers} onPress={() => { if (history.length) { haptic.select(); setHistoryOpen((o) => !o); } }}
             style={[styles.bar, glassShadow]} accessibilityRole="button" accessibilityLabel={`${statusText}. Show recent steps`}>
             <GlassLayer radius={30} />
             {connected && isRunning && !awaitingHuman && !takeover ? <ProgressRing size={20} color="#fff" /> : <LiveLight color={light.color} pulse={light.pulse} size={9} />}
             <FadeSwapText text={statusText} style={styles.workingText} />
-            {history.length ? <Ionicons name={historyOpen ? 'chevron-down' : 'chevron-up'} size={16} color="rgba(255,255,255,0.55)" /> : null}
+            {/* chevron hidden in takeover so 'You have control' fits beside the trackpad toggle + Done */}
+            {history.length && !takeover ? <Ionicons name={historyOpen ? 'chevron-down' : 'chevron-up'} size={16} color="rgba(255,255,255,0.55)" /> : null}
           </Pressable>
           {takeover ? (
             <TouchableOpacity onPress={finishTakeover} style={[styles.chip, styles.chipPrimary]} accessibilityRole="button" accessibilityLabel="Done - hand control back">
@@ -251,7 +270,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 16, paddingBottom: 8 },
   round: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  site: { height: 48, borderRadius: 24, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '62%' },
+  site: { height: 48, borderRadius: 24, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '62%', flexShrink: 1 },
   siteText: { color: '#fff', fontSize: 17, fontWeight: '600', letterSpacing: -0.4 },
   siteInput: { flex: 1, color: '#fff', fontSize: 16, padding: 0 },
   shimmerWrap: { marginHorizontal: 28, marginBottom: 8, height: 2 },
@@ -267,6 +286,8 @@ const styles = StyleSheet.create({
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 12, marginTop: 12 },
   bar: { flex: 1, height: 60, borderRadius: 30, flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 14, gap: 10 },
   chip: { height: 60, borderRadius: 30, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden' },
+  tpToggle: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  tpOn: { backgroundColor: '#0A84FF', shadowColor: '#0A84FF', shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 4 } },
   chipPrimary: { backgroundColor: '#0A84FF', shadowColor: '#0A84FF', shadowOpacity: 0.6, shadowRadius: 14, shadowOffset: { width: 0, height: 4 } },
   chipAlert: { backgroundColor: '#FFD60A', shadowColor: '#FFD60A', shadowOpacity: 0.45, shadowRadius: 14, shadowOffset: { width: 0, height: 4 } },
   chipText: { color: '#fff', fontSize: 16, fontWeight: '600', letterSpacing: -0.4 },

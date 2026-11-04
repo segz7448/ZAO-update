@@ -39,6 +39,7 @@
  */
 
 const { TARGET_ACTIONS, normalizeTarget } = require('./stepTarget');
+const { clampPoint, clampWheel, clickCount } = require('./manualInput');
 const { chromium } = require('playwright');
 
 const MAX_STEPS_PER_TASK = 25;
@@ -591,10 +592,48 @@ class AgentSession {
   }
 
   /** Manual tap, sent from the phone's live view while awaitingHuman (or any time - useful for nudging a stuck page too). Coordinates are relative to the streamed viewport (412x915). */
-  async manualClick(x, y) {
+  async manualClick(x, y, count) {
     const page = this._activePage();
     if (!page) return;
-    await page.mouse.click(x, y).catch(() => {});
+    const pt = clampPoint(x, y, page.viewportSize());
+    if (!pt) return;
+    await page.mouse.click(pt.x, pt.y, { clickCount: clickCount(count) }).catch(() => {});
+  }
+
+  /** Trackpad mode: pointer moved (hover). Throttled on the phone (~30/s). */
+  async manualMouseMove(x, y) {
+    const page = this._activePage();
+    const pt = page && clampPoint(x, y, page.viewportSize());
+    if (!pt) return;
+    await page.mouse.move(pt.x, pt.y).catch(() => {});
+  }
+
+  /** Trackpad mode: long-press -> press at the pointer (drag-select, sliders, drag-and-drop). */
+  async manualMouseDown(x, y) {
+    const page = this._activePage();
+    const pt = page && clampPoint(x, y, page.viewportSize());
+    if (!pt) return;
+    await page.mouse.move(pt.x, pt.y).catch(() => {});
+    await page.mouse.down().catch(() => {});
+  }
+
+  async manualMouseUp(x, y) {
+    const page = this._activePage();
+    if (!page) return;
+    const pt = clampPoint(x, y, page.viewportSize());
+    if (pt) await page.mouse.move(pt.x, pt.y).catch(() => {});
+    await page.mouse.up().catch(() => {});
+  }
+
+  /** Trackpad mode: two-finger scroll. Wheel goes to whatever is under the pointer (x, y), like a real trackpad. */
+  async manualWheel(dx, dy, x, y) {
+    const page = this._activePage();
+    if (!page) return;
+    const d = clampWheel(dx, dy);
+    if (!d) return;
+    const pt = clampPoint(x, y, page.viewportSize());
+    if (pt) await page.mouse.move(pt.x, pt.y).catch(() => {});
+    await page.mouse.wheel(d.dx, d.dy).catch(() => {});
   }
 
   /** Manual text input, sent from the phone's live view. Types into whatever element currently has focus (the person should tap the field first via manualClick). */
