@@ -28,6 +28,7 @@
 
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Image, Text, StyleSheet, PanResponder } from 'react-native';
+import ClickRingOverlay from '../../components/ClickRingOverlay';
 
 // Must match server/browserAgent.js's AgentSession context viewport
 // exactly - manual tap coordinates are computed relative to this, then
@@ -68,9 +69,10 @@ function computeFitBox(containerWidth, containerHeight, zoom) {
  * @param {boolean} [props.connected] - whether the WebSocket to the PC is currently open
  * @param {string|null} [props.connectionError] - human-readable reason the connection isn't open, if known
  * @param {boolean} [props.isRunning] - whether a task is actively running on the PC session right now
+ * @param {object} [props.target] - card.lastTarget from step messages, drawn as the click ring (optional)
  * @param {number} [props.zoom] - 0-1 display scale, see header. Defaults to 1 (fill the container) for any caller that doesn't pass one, so existing usage is unaffected.
  */
-export default function BrowserStreamView({ frameBase64, stream, interactive = false, connected = false, connectionError = null, isRunning = false, zoom = 1 }) {
+export default function BrowserStreamView({ frameBase64, stream, interactive = false, connected = false, connectionError = null, isRunning = false, zoom = 1, target = null }) {
   const [layoutSize, setLayoutSize] = useState({ width: STREAM_VIEWPORT.width, height: STREAM_VIEWPORT.height });
 
   const onLayout = useCallback((e) => {
@@ -138,6 +140,8 @@ export default function BrowserStreamView({ frameBase64, stream, interactive = f
           </Text>
         </View>
       )}
+      {/* Where the agent is acting (step.target) - same contain+zoom fit as the frame above; hidden while the person has control. */}
+      <ClickRingOverlay target={target} visible={!!frameBase64 && !interactive} fit={{ mode: 'contain', align: 'center', zoom }} />
       {/* Transparent touch-capture layer - only actually forwards taps to the PC when interactive is true, but always present so onLayout has a stable measurement surface. */}
       <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
     </View>

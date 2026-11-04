@@ -8,6 +8,7 @@
  * server or invents protocol - it's the reducer that browserCardStore.js
  * feeds stream events through, kept pure so it's unit-testable.
  */
+import { sanitizeTarget } from './clickTarget';
 
 export const CARD_PHASE = {
   LIVE: 'live', // connected session, agent idle (e.g. manual navigation in fullscreen)
@@ -52,6 +53,12 @@ export function activeTab(tabs) {
 
 const trunc = (s, n = 40) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || '');
 
+/** The step's optional `target` (see clickTarget.js), stamped so the overlay can tell each new one apart. */
+function targetEntry(ev, n) {
+  const t = sanitizeTarget(ev.target);
+  return t ? { ...t, action: ev.action?.action || null, n, at: ev.at || Date.now() } : null;
+}
+
 /** Human caption for one 'step' message ({ step, action }). */
 export function captionForStep(stepMsg) {
   const a = stepMsg?.action;
@@ -95,6 +102,7 @@ export function initialCard({ id, conversationId = null, anchorMessageId = null,
     error: null,
     collapsed: false,
     history: [], // recent step messages: { n, action, caption, at }
+    lastTarget: null, // { x, y, w, h, vw, vh, action, n, at } from the newest step that carried one - click-ring overlay
   };
 }
 
@@ -134,7 +142,7 @@ export function reduceCard(card, ev) {
     }
     case 'step':
       if (terminal) return card;
-      return { ...card, caption: captionForStep(ev), stepCount: card.stepCount + 1, history: appendHistory(card.history, historyEntry(ev, card.stepCount + 1)), phase: card.phase === CARD_PHASE.LIVE ? CARD_PHASE.WORKING : card.phase };
+      return { ...card, caption: captionForStep(ev), stepCount: card.stepCount + 1, lastTarget: targetEntry(ev, card.stepCount + 1) || card.lastTarget || null, history: appendHistory(card.history, historyEntry(ev, card.stepCount + 1)), phase: card.phase === CARD_PHASE.LIVE ? CARD_PHASE.WORKING : card.phase };
     case 'taskResult':
       if (terminal) return card;
       if (ev.needsHuman) return { ...card, phase: CARD_PHASE.PAUSED, caption: ev.reason ? `Needs you: ${trunc(ev.reason, 60)}` : 'Waiting for you to take over' };

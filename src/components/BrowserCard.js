@@ -17,6 +17,7 @@ import { View, Text, Image, TouchableOpacity, Animated, ActivityIndicator, Style
 import { Ionicons } from '@expo/vector-icons';
 import { GlassFill, glassSurface, haptic } from '../ui/ios';
 import { CARD_PHASE, statusPill, domainFromUrl, phaseLight } from '../services/browserAgent/browserCardState';
+import ClickRingOverlay from './ClickRingOverlay';
 import { LiveLight, ProgressRing, FadeSwapText, GlassLayer, glassShadow } from './browserFx';
 
 const STREAM_W = 412; // server/browserAgent.js viewport
@@ -126,6 +127,8 @@ export default function BrowserCard({ card, theme, stream, onExpand, onTakeOver,
                 <Text style={[styles.emptyText, { color: '#8E8E93' }]}>{phase === CARD_PHASE.ERROR ? 'No preview available' : 'Waiting for the live view…'}</Text>
               </View>
             )}
+            {/* where the agent is acting (step.target); frame is width-filled + top-aligned = cover/top. Agent phases only - hidden once it's the person's turn. */}
+            <ClickRingOverlay compact target={card.lastTarget || null} visible={!!lastFrame && (phase === CARD_PHASE.WORKING || phase === CARD_PHASE.LIVE)} fit={{ mode: 'cover', align: 'top' }} />
             {phase === CARD_PHASE.RECONNECTING && (
               <View style={styles.veil}><ActivityIndicator color="#fff" /><Text style={styles.veilText}>Reconnecting…</Text></View>
             )}
@@ -133,7 +136,8 @@ export default function BrowserCard({ card, theme, stream, onExpand, onTakeOver,
           </TouchableOpacity>
           <View style={styles.captionRow}>
             {phase === CARD_PHASE.WORKING ? <ProgressRing size={16} color="#4FA3FF" stroke={2} />
-              : <Ionicons name={phase === CARD_PHASE.DONE ? 'checkmark-done' : phase === CARD_PHASE.ERROR ? 'alert-circle' : phase === CARD_PHASE.PAUSED ? 'hand-left' : 'navigate-circle-outline'} size={17} color={phaseLight(phase).color} />}
+              : phase === CARD_PHASE.PAUSED ? <View style={styles.needBadge}><Ionicons name="hand-left-outline" size={13} color="#FFD60A" /></View>
+              : <Ionicons name={phase === CARD_PHASE.DONE ? 'checkmark-done' : phase === CARD_PHASE.ERROR ? 'alert-circle' : 'navigate-circle-outline'} size={17} color={phaseLight(phase).color} />}
             <FadeSwapText text={caption} style={styles.caption} numberOfLines={2} />
           </View>
           <View style={styles.ctls}>
@@ -178,6 +182,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13 },
   veil: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', gap: 8 },
   veilText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  needBadge: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,214,10,0.16)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,214,10,0.55)' }, // outline glyph in a tinted disc - a filled yellow hand reads as an emoji
   expandBadge: { position: 'absolute', right: 10, bottom: 10, width: 32, height: 32, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
   caption: { flex: 1, fontSize: 15, fontWeight: '500', letterSpacing: -0.2, color: 'rgba(255,255,255,0.88)' },

@@ -38,6 +38,7 @@
  * the page (now however the person left it) and continues.
  */
 
+const { TARGET_ACTIONS, normalizeTarget } = require('./stepTarget');
 const { chromium } = require('playwright');
 
 const MAX_STEPS_PER_TASK = 25;
@@ -305,6 +306,25 @@ class AgentSession {
     return { url: page.url(), title: await page.title().catch(() => '') };
   }
 
+  /**
+   * Where the agent is about to act, for the phone's click ring. Scrolls the
+   * element into view first (Playwright's click/fill do this anyway), then
+   * reads its viewport-relative box. Best-effort: never throws, null if none.
+   */
+  async _targetFor(action) {
+    try {
+      if (!action || !action.zaoId || !TARGET_ACTIONS.has(action.action)) return null;
+      const page = this._activePage();
+      if (!page) return null;
+      const loc = await this._findLocator(action.zaoId);
+      await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+      const box = await loc.boundingBox({ timeout: 2000 });
+      return normalizeTarget(box, page.viewportSize());
+    } catch (_) {
+      return null;
+    }
+  }
+
   async _findLocator(zaoId) {
     const page = this._activePage();
     return page.locator(`[data-zao-id="${zaoId}"]`).first();
@@ -460,7 +480,7 @@ class AgentSession {
         continue;
       }
 
-      onStep?.({ step, action });
+      if (onStep) onStep({ step, action, target: await this._targetFor(action) });
 
       if (action.action === 'finish') {
         return { success: true, answer: action.answer || '', error: null, stepsUsed: step + 1 };
@@ -550,7 +570,7 @@ class AgentSession {
         this.history.push({ role: 'user', content: 'Your last reply was not valid JSON. Reply with exactly one JSON action object and nothing else.', __isObservation: true });
         continue;
       }
-      onStep?.({ step, action });
+      if (onStep) onStep({ step, action, target: await this._targetFor(action) });
       if (action.action === 'finish') {
         return { success: true, answer: action.answer || '', error: null, stepsUsed: step + 1 };
       }

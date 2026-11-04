@@ -170,7 +170,7 @@ export default function BrowserFullscreen({
         <View style={styles.pageWrap}>
           <Animated.View pointerEvents="none" style={[styles.glow, { opacity: glow }]} />
           <View style={[styles.page, takeover && styles.pageTakeover]} onTouchEnd={takeover ? () => kbRef.current?.focus() : undefined}>
-            <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={takeover} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} />
+            <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={takeover} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} target={activeCard?.lastTarget || null} />
             {takeover ? (
               <View style={styles.banner} pointerEvents="none">
                 <GlassLayer radius={18} />

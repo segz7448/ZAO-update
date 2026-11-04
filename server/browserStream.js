@@ -7,7 +7,8 @@
  *   PC -> phone:
  *     { type: 'frame', data: '<base64 jpeg>' }              - live screenshot, ~2fps while a task/manual session is active
  *     { type: 'status', running, awaitingHuman, reason, tabs }  - agent state changes; tabs is [{tabId, url, title, active}] for the address-bar/tab-strip UI
- *     { type: 'step', step, action }                         - one action the model just took, for the live action-log
+ *     { type: 'step', step, action, target? }                - one action the model just took, for the live action-log;
+ *                                                              target = { x, y, w, h, vw, vh } viewport CSS px (see stepTarget.js)
  *     { type: 'taskResult', success, answer, error, needsHuman, reason }  - task finished/paused
  *
  *   phone -> PC:
@@ -37,6 +38,7 @@
  * indefinitely if a phone connection just vanishes without a clean close.
  */
 
+const { buildStepMessage } = require('./stepTarget');
 const { WebSocketServer } = require('ws');
 const { AgentSession } = require('./browserAgent');
 
@@ -79,9 +81,9 @@ function registerBrowserAgentStream(httpServer, config, log, sendToModel) {
       }));
     };
 
-    const onStep = ({ step, action }) => {
+    const onStep = ({ step, action, target }) => {
       if (ws.readyState !== ws.OPEN) return;
-      ws.send(JSON.stringify({ type: 'step', step, action }));
+      ws.send(JSON.stringify(buildStepMessage({ step, action, target })));
     };
 
     ws.on('message', async (raw) => {
