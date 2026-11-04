@@ -13,7 +13,7 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { IconTile, CircleButton, ZaoAvatar, haptic } from '../ui/ios';
+import { IconTile, haptic } from '../ui/ios';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
@@ -936,7 +936,7 @@ function PermissionModeSection({ preferences, onSetMode, theme }) {
     <View>
       {PERMISSION_MODES.map((mode, i) => (
         <React.Fragment key={mode}>
-          {i > 0 && <View style={[styles.divider, { backgroundColor: theme.separator }]} />}
+          {i > 0 && <View style={[styles.divider, { backgroundColor: theme.border }]} />}
           <RadioOption
             label={PERMISSION_MODE_INFO[mode].label}
             subtitle={PERMISSION_MODE_INFO[mode].subtitle}
@@ -1439,7 +1439,7 @@ function RadioOption({ label, subtitle, selected, onPress, theme, icon, tileColo
   return (
     <TouchableOpacity style={styles.modeOption} onPress={() => { haptic.select(); onPress?.(); }} accessibilityState={{ selected }}>
       <View style={styles.modeOptionLeft}>
-        {icon ? <IconTile name={icon} theme={theme} size={24} /> : null}
+        {icon ? <IconTile name={icon} color={tileColor || theme.tileColors.blue} /> : null}
         <View style={{ flex: 1 }}>
           <Text style={[styles.modeTitle, { color: theme.textPrimary }]}>{label}</Text>
           {subtitle ? <Text style={[styles.modeSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text> : null}
@@ -1585,31 +1585,19 @@ export default function SettingsScreen({ onOpenSidebar }) {
       style={[styles.container, { backgroundColor: theme.groupedBackground }]}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
-      {/* v2: Grok Bot profile-style header (01-bot-profile): 44pt white circles,
-          big centered avatar, bold name, gray capsule, then grouped cards. */}
       <View style={styles.header}>
-        {onOpenSidebar ? (
-          <CircleButton theme={theme} icon="chevron-back" label="Back" onPress={onOpenSidebar} />
-        ) : <View style={{ width: 44 }} />}
-        <CircleButton theme={theme} icon="stats-chart-outline" iconSize={19} label="Usage and activity" onPress={() => setUsageModalVisible(true)} />
+        {onOpenSidebar && (
+          <TouchableOpacity
+            onPress={() => { haptic.light(); onOpenSidebar(); }}
+            hitSlop={12}
+            style={styles.headerIconButton}
+            accessibilityLabel="Open menu"
+          >
+            <Ionicons name="chevron-back" size={26} color={theme.brand} />
+          </TouchableOpacity>
+        )}
       </View>
-      <View style={styles.profileHero}>
-        <ZaoAvatar size={88} />
-        <Text style={[styles.profileName, { color: theme.textPrimary }]}>ZAO</Text>
-        <TouchableOpacity
-          style={[styles.profilePill, { backgroundColor: theme.pill }]}
-          onPress={() => {
-            haptic.select();
-            const order = ['auto', 'light', 'dark'];
-            setThemePreference(order[(order.indexOf(themePreference) + 1) % order.length]);
-          }}
-          accessibilityLabel="Cycle appearance"
-        >
-          <Text style={[styles.profilePillText, { color: theme.textPrimary }]}>
-            {themePreference === 'dark' ? 'Dark' : themePreference === 'light' ? 'Light' : 'Auto'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
 
       <SectionHeader title="Appearance" theme={theme} />
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -1622,7 +1610,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
           icon="contrast"
           tileColor={theme.tileColors.indigo}
         />
-        <View style={[styles.divider, { backgroundColor: theme.separator }]} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
           label="Light"
           selected={themePreference === 'light'}
@@ -1631,7 +1619,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
           icon="sunny"
           tileColor={theme.tileColors.orange}
         />
-        <View style={[styles.divider, { backgroundColor: theme.separator }]} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
           label="Dark"
           selected={themePreference === 'dark'}
@@ -1648,9 +1636,9 @@ export default function SettingsScreen({ onOpenSidebar }) {
           style={styles.navRow}
           onPress={() => { haptic.light(); setUsageModalVisible(true); }}
         >
-          <IconTile name="stats-chart" theme={theme} size={24} />
+          <IconTile name="stats-chart" color={theme.tileColors.green} />
           <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Usage & Activity</Text>
-          <Ionicons name="chevron-forward" size={18} color={theme.chevron} />
+          <Ionicons name="chevron-forward" size={17} color={theme.textTertiary} />
         </TouchableOpacity>
       </View>
 
@@ -1795,39 +1783,13 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 6,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     minHeight: 44,
-    marginHorizontal: -8,
-  },
-  profileHero: {
-    alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 10,
-  },
-  profileName: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginTop: 14,
-  },
-  profilePill: {
-    marginTop: 12,
-    height: 31,
-    minWidth: 50,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profilePillText: {
-    fontSize: 15,
-    fontWeight: '500',
   },
   headerIconButton: {
     marginLeft: -6,
@@ -1842,14 +1804,15 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '400',
+    textTransform: 'uppercase',
     letterSpacing: -0.08,
-    marginTop: 24,
-    marginBottom: 8,
+    marginTop: 26,
+    marginBottom: 7,
     marginLeft: 16,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 10,
     paddingVertical: 2,
     paddingHorizontal: 4,
     overflow: 'hidden',
@@ -1857,8 +1820,8 @@ const styles = StyleSheet.create({
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    minHeight: 50,
+    gap: 12,
+    minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
@@ -1870,7 +1833,7 @@ const styles = StyleSheet.create({
   modeOption: {
     paddingVertical: 8,
     paddingHorizontal: 12,
-    minHeight: 50,
+    minHeight: 44,
     justifyContent: 'center',
   },
   modeOptionLeft: {
@@ -1895,8 +1858,8 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   divider: {
-    height: 1,
-    marginLeft: 52,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 53,
   },
   subLabel: {
     fontSize: 13,

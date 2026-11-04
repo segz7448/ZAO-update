@@ -42,15 +42,11 @@ export function outlineName(name) {
   return Ionicons.glyphMap && Ionicons.glyphMap[candidate] ? candidate : name;
 }
 
-/**
- * Leading row icon. v2: Grok Bot uses thin gray outline glyphs, no colored tile.
- * `color` is accepted for API compatibility but ignored unless `tinted`.
- */
-export function IconTile({ name, color, size = 29, theme, tinted = false }) {
-  const iconColor = tinted ? color : (theme?.icon || '#8A8A8D');
+/** iOS Settings-style rounded-square colored icon tile (v1, kept in the mix build). */
+export function IconTile({ name, color, size = 29 }) {
   return (
-    <View style={[styles.tile, { width: size, height: size }]}>
-      <Ionicons name={outlineName(name)} size={Math.round(size * 0.76)} color={iconColor} />
+    <View style={[styles.tile, { backgroundColor: color, width: size, height: size }]}>
+      <Ionicons name={name} size={Math.round(size * 0.62)} color="#FFFFFF" />
     </View>
   );
 }
@@ -108,7 +104,7 @@ export function Hairline({ theme, inset = 0 }) {
 
 const styles = StyleSheet.create({
   grabber: { width: 36, height: 5, borderRadius: 2.5, alignSelf: 'center', marginTop: 6, marginBottom: 8 },
-  tile: { alignItems: 'center', justifyContent: 'center' },
+  tile: { borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   circle: {
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowRadius: 10, elevation: 2,

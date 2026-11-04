@@ -119,7 +119,7 @@ export const lightTheme = {
   chipGrey: '#F1F2F1',
   modeSelected: '#FFFFFF',
   modeTrack: '#EFEFF0',
-  switchTrack: '#0762D5',         // custom tint (Grok Bot tints, not iOS green)
+  switchTrack: '#34C759',         // mix: iOS system green switches app-wide
 
   success: '#1FA855',
   warning: '#E08600',
@@ -189,7 +189,7 @@ export const darkTheme = {
   chipGrey: '#1C1C1C',
   modeSelected: '#3A3A3A',
   modeTrack: '#1A1A1A',
-  switchTrack: '#2B88D3',
+  switchTrack: '#30D158',
 
   success: '#30D158',
   warning: '#FF9F0A',
