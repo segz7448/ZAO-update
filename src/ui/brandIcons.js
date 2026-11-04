@@ -92,6 +92,7 @@ export const BRAND_KEY_FOR = {
   conn_linear: 'linear',
   conn_jira: 'jira',
   conn_figma: 'figma',
+  conn_google: 'google',
   conn_gmail: 'gmail',
   conn_discord: 'discord',
   conn_telegram: 'telegram',
