@@ -19,6 +19,7 @@ import { StatusPill } from '../ui/GlassSheet';
 import { ConnectorsHub } from '../components/settings/ConnectorsHub';
 import { VaultSheet } from '../components/settings/VaultSheet';
 import { VpnSheet } from '../components/settings/VpnSheet';
+import { PluginsHub } from '../components/settings/PluginsHub';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
@@ -1652,7 +1653,7 @@ function UsageRow({ label, value, theme, last = false }) {
   );
 }
 
-export default function SettingsScreen({ onOpenSidebar }) {
+export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
   const theme = useTheme();
   const {
     preferences, loadPreferences,
@@ -1664,6 +1665,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vpnOpen, setVpnOpen] = useState(false);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
 
   useEffect(() => {
     loadPreferences();
@@ -1703,7 +1705,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
       </View>
       <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
 
-      <SectionHeader title="Appearance" theme={theme} />
+      <SectionHeader title="General" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
         <RadioOption
@@ -1730,59 +1732,33 @@ export default function SettingsScreen({ onOpenSidebar }) {
           theme={theme}
           iconKey="appearance_dark"
         />
-      </View>
-
-      <SectionHeader title="Usage" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <NavRow iconKey="usage" label="Usage & Activity" onPress={() => setUsageModalVisible(true)} />
       </View>
 
-      <SectionHeader title="Connectors" theme={theme} />
+      <SectionHeader title="Integrations" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
         <NavRow iconKey="connectors" label="Connectors" onPress={() => setConnectorsOpen(true)} detail="Hub" />
-      </View>
-
-      <SectionHeader title="Vault" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <NavRow iconKey="plugins" label="Plugins" onPress={() => setPluginsOpen(true)} detail="Hub" />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <NavRow iconKey="vault" label="Vault" onPress={() => setVaultOpen(true)} detail="Secure" />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <NavRow iconKey="vpn" label="VPN" onPress={() => setVpnOpen(true)} detail="Demo" />
       </View>
 
-      <SectionHeader title="VPN" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <NavRow iconKey="vpn" label="VPN" onPress={() => setVpnOpen(true)} detail="Soon" />
-      </View>
-
-      <SectionHeader title="Memory" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <MemorySection preferences={preferences} onToggle={setMemoryEnabled} theme={theme} />
-      </View>
-
-      <SectionHeader title="Reminders" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-        <RemindersSection theme={theme} />
-      </View>
-
-      <SectionHeader title="Permissions" theme={theme} />
+      <SectionHeader title="Agent" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
         <PermissionModeSection preferences={preferences} onSetMode={setPermissionMode} theme={theme} />
-      </View>
-
-      <SectionHeader title="Checkpoints" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <MemorySection preferences={preferences} onToggle={setMemoryEnabled} theme={theme} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <RemindersSection theme={theme} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <CheckpointsSection theme={theme} />
-      </View>
-
-      <SectionHeader title="Agent Activity" theme={theme} />
-      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <AuditTrailSection preferences={preferences} onSetOtelEndpoint={setOtelExportEndpoint} theme={theme} />
       </View>
     </ScrollView>
@@ -1806,6 +1782,12 @@ export default function SettingsScreen({ onOpenSidebar }) {
       visible={vpnOpen}
       onClose={() => setVpnOpen(false)}
       theme={theme}
+    />
+    <PluginsHub
+      visible={pluginsOpen}
+      onClose={() => setPluginsOpen(false)}
+      theme={theme}
+      onGoChat={onGoChat}
     />
     </>
   );

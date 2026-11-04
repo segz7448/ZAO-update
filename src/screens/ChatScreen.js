@@ -20,6 +20,8 @@ import { AppIconTile } from '../ui/icons';
 import { Ionicons } from '@expo/vector-icons';
 import { CircleButton, ZaoAvatar, AllowButton, DenyButton, GlassFill, glassSurface, haptic } from '../ui/ios';
 import BrowserCard, { BrowserMiniIndicator } from '../components/BrowserCard';
+import { PluginPreviewCard, parsePluginPreview } from '../components/PluginPreviewCard';
+import { useComposerDraftStore } from '../store/composerDraftStore';
 import { useBrowserCardStore } from '../store/browserCardStore';
 import { mergeBrowserCards } from '../services/browserAgent/browserCardState';
 import { useChatStore } from '../store/chatStore';
@@ -214,7 +216,7 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
   );
 }
 
-function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps, onOpenPlan, onApproveCommand, onDismissCommand, onToast }) {
+function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps, onOpenPlan, onApproveCommand, onDismissCommand, onToast, onGoChat }) {
   const isUser = message.role === 'user';
   const textColor = isUser ? theme.bubbleUserText : theme.bubbleAssistantText;
   const bubbleRef = useRef(null);
@@ -300,6 +302,15 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
               borderColor={theme.borderStrong}
             />
           )}
+          {!isUser && message.plugin_preview ? (
+            <View style={{ marginTop: 10 }}>
+              <PluginPreviewCard
+                preview={parsePluginPreview(message.plugin_preview)}
+                theme={theme}
+                onGoChat={onGoChat}
+              />
+            </View>
+          ) : null}
           <View style={styles.bubbleFooter}>
             {!isUser && message.model_family && !message.is_error && (
               <Text style={[styles.modelTag, { color: theme.textTertiary }]}>
@@ -468,6 +479,17 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
   const { preferences, loadPreferences, setBrowserAccessEnabled, setWebSearchEnabled, setGithubToolsEnabled, apiKeyStatus } = usePreferencesStore();
 
   const [inputText, setInputText] = useState('');
+  // Starter prompts from Plugins hub / PluginPreviewCard Edit land here.
+  useEffect(() => {
+    const pull = () => {
+      const draft = useComposerDraftStore.getState().consumeDraft();
+      if (draft) setInputText(draft);
+    };
+    pull();
+    return useComposerDraftStore.subscribe((state, prev) => {
+      if (state.draft && state.draft !== prev?.draft) pull();
+    });
+  }, []);
   const [attachmentVisible, setAttachmentVisible] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState(null); // { uri, name, mimeType, size }
   const listRef = useRef(null);

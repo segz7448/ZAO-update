@@ -1,630 +1,842 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * Vault — import existing credentials (no password generator).
+ * Circular glass + adds: website autocomplete + brand icon, identifier
+ * segments, optional 2FA / notes / tags, CSV import, live authenticator.
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Switch, AppState,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
+  ActivityIndicator, Switch, ScrollView, FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import * as DocumentPicker from 'expo-document-picker';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { GlassSheet, GlassCard, StatusPill } from '../../ui/GlassSheet';
-import { AppIconTile, vaultIconKey } from '../../ui/icons';
-import { haptic } from '../../ui/ios';
+import { AppIconTile, brandIconForWebsite } from '../../ui/icons';
+import { GlassFill, glassSurface, haptic } from '../../ui/ios';
 import {
-  listVaultItems, getVaultSecuritySummary, revealVaultSecret,
-  createVaultItem, updateVaultItem, deleteVaultItem, migrateGithubTokenIntoVault,
+  listVaultItems, createVaultItem, deleteVaultItem, revealVaultSecret,
+  getVaultSecuritySummary, listAuthenticatorItems,
 } from '../../vault/vaultService';
-import {
-  unlockVault, lockVault, getVaultLockState, subscribeVaultLock,
-  ensureVaultAppStateWatcher, touchVaultActivity,
-} from '../../vault/vaultAuth';
-import { generatePassword } from '../../vault/generator';
-import { scorePassword } from '../../vault/strength';
+import { unlockVault, requireVaultUnlock, getVaultLockState, subscribeVaultLock } from '../../vault/vaultAuth';
+import { scorePassword, isWeakScore } from '../../vault/strength';
+import { suggestDomains, normalizeWebsite, PHONE_COUNTRIES, isValidEmail } from '../../vault/domains';
+import { parsePasswordCsv, importSelectionSummary } from '../../vault/importCsv';
+import { parseOtpAuthUri, validateBase32Secret } from '../../vault/otpauth';
 import { totp, totpProgress } from '../../vault/totp';
 import { copySecret } from '../../vault/clipboard';
-import { usePreferencesStore } from '../../store/preferencesStore';
 
-const TYPE_FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'login', label: 'Logins' },
-  { id: 'api_key', label: 'API keys' },
-  { id: 'secure_note', label: 'Notes' },
-  { id: 'ssh_key', label: 'SSH' },
-  { id: 'connector_token', label: 'Connectors' },
+const ID_TYPES = [
+  { id: 'email', label: 'Email' },
+  { id: 'username', label: 'Username' },
+  { id: 'phone', label: 'Phone' },
+  { id: 'api_key', label: 'API key' },
 ];
 
-
-function strengthTone(score) {
-  if (score <= 1) return 'bad';
-  if (score === 2) return 'warn';
-  if (score === 3) return 'info';
-  return 'ok';
+function StrengthBadge({ theme, password }) {
+  const s = scorePassword(password);
+  const tone = s.score <= 1 ? 'bad' : s.score === 2 ? 'warn' : 'ok';
+  return <StatusPill theme={theme} tone={tone} label={s.label} />;
 }
 
-function formatRelative(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleString();
-}
-
-function formatTotpCode(code) {
-  const digits = String(code || '').replace(/\s/g, '');
-  if (digits.length === 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-  return code || '------';
-}
-
-/** Small countdown ring beside a large spaced code — never overflow the circle. */
-function TotpRing({ remaining, step = 30, theme, code }) {
-  const pct = totpProgress(remaining, step);
-  const size = 44;
-  const stroke = 4;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const offset = c * (1 - Math.max(0, Math.min(1, pct)));
+function Segmented({ theme, value, options, onChange }) {
   return (
-    <View style={styles.totpWrap}>
-      <View style={styles.totpRingBox}>
-        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={theme.borderStrong}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={theme.accent}
-            strokeWidth={stroke}
-            fill="none"
-            strokeDasharray={`${c} ${c}`}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-          />
-        </Svg>
-        <Text style={[styles.totpRemain, { color: theme.textSecondary }]}>{remaining}s</Text>
-      </View>
-      <View style={{ flex: 1, marginLeft: 14 }}>
-        <Text style={[styles.totpCode, { color: theme.textPrimary }]}>{formatTotpCode(code)}</Text>
-        <Text style={{ color: theme.textTertiary, fontSize: 12, marginTop: 2 }}>Authenticator code</Text>
-      </View>
+    <View style={[styles.segment, { backgroundColor: theme.fillTertiary || theme.borderSubtle }]}>
+      {options.map((o) => {
+        const on = value === o.id;
+        return (
+          <TouchableOpacity
+            key={o.id}
+            onPress={() => { haptic.select(); onChange(o.id); }}
+            style={[styles.segmentItem, on && { backgroundColor: theme.card || theme.fillPrimary, borderRadius: 9 }]}
+          >
+            <Text style={{ color: on ? theme.textPrimary : theme.textSecondary, fontWeight: on ? '700' : '600', fontSize: 12 }} numberOfLines={1}>
+              {o.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
-function GeneratorPanel({ theme, onUse }) {
-  const [length, setLength] = useState(20);
-  const [symbols, setSymbols] = useState(true);
-  const [digits, setDigits] = useState(true);
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
+function AddCredentialSheet({ visible, onClose, theme, onSaved }) {
+  const [website, setWebsite] = useState('');
+  const [idType, setIdType] = useState('email');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState('');
+  const [show2fa, setShow2fa] = useState(false);
+  const [totpSecret, setTotpSecret] = useState('');
+  const [showMore, setShowMore] = useState(false);
+  const [extraType, setExtraType] = useState(null); // secure_note | ssh_key
+  const [extraBody, setExtraBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [dial, setDial] = useState(PHONE_COUNTRIES[0]);
+  const suggestions = useMemo(() => suggestDomains(website), [website]);
+  const brandKey = brandIconForWebsite(website) || 'web';
 
-  const run = async () => {
-    setBusy(true);
-    const r = await generatePassword({ length, symbols, digits });
-    setResult(r);
-    setBusy(false);
-    haptic.success();
+  const reset = () => {
+    setWebsite(''); setIdType('email'); setIdentifier(''); setPassword('');
+    setNotes(''); setTags(''); setShow2fa(false); setTotpSecret('');
+    setShowMore(false); setExtraType(null); setExtraBody('');
   };
 
-  useEffect(() => { run(); }, []);
+  const save = async () => {
+    const host = normalizeWebsite(website);
+    if (!host && !extraType) {
+      Alert.alert('Website required', 'Enter a website or app domain.');
+      return;
+    }
+    if (idType === 'email' && identifier && !isValidEmail(identifier)) {
+      Alert.alert('Invalid email', 'Check the email address.');
+      return;
+    }
+    const totpCheck = show2fa && totpSecret ? validateBase32Secret(totpSecret) : { ok: true };
+    if (show2fa && totpSecret && !totpCheck.ok) {
+      Alert.alert('Invalid 2FA key', 'Setup key must be base32.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await requireVaultUnlock({ reason: 'Add credential' });
+      if (extraType === 'secure_note') {
+        await createVaultItem({
+          type: 'secure_note',
+          title: identifier || host || 'Secure note',
+          website: host || null,
+          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+          secret: { note: extraBody || notes },
+        });
+      } else if (extraType === 'ssh_key') {
+        await createVaultItem({
+          type: 'ssh_key',
+          title: identifier || host || 'SSH key',
+          website: host || null,
+          username: identifier || null,
+          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+          secret: { privateKey: extraBody, passphrase: password || undefined },
+        });
+      } else if (idType === 'api_key') {
+        await createVaultItem({
+          type: 'api_key',
+          title: host || 'API key',
+          website: host || null,
+          username: identifier || null,
+          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+          secret: { token: password, note: notes || undefined },
+        });
+      } else {
+        const username = idType === 'phone'
+          ? `${dial.dial} ${identifier}`.trim()
+          : identifier;
+        await createVaultItem({
+          type: 'login',
+          title: host || username || 'Login',
+          website: host || null,
+          username,
+          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+          secret: {
+            password,
+            totpSecret: show2fa && totpCheck.ok && totpCheck.secret ? totpCheck.secret : undefined,
+            note: notes || undefined,
+            identifierType: idType,
+          },
+          hasTotp: !!(show2fa && totpSecret),
+        });
+      }
+      haptic.success();
+      reset();
+      onSaved?.();
+      onClose?.();
+    } catch (e) {
+      Alert.alert('Could not save', e?.message || 'Unknown error');
+    }
+    setSaving(false);
+  };
 
   return (
-    <GlassCard theme={theme}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <AppIconTile k="vault_generator" size={32} />
-        <Text style={{ color: theme.textPrimary, fontSize: 17, fontWeight: '700' }}>Password generator</Text>
-      </View>
-      <Text style={{ color: theme.textSecondary, marginBottom: 8 }}>Length · {length}</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-        {[12, 16, 20, 24, 32].map((n) => (
-          <TouchableOpacity
-            key={n}
-            onPress={() => setLength(n)}
-            style={[styles.chip, { backgroundColor: length === n ? theme.accentSoft : theme.surfaceAlt, borderColor: length === n ? theme.accent : theme.border }]}
-          >
-            <Text style={{ color: length === n ? theme.accent : theme.textSecondary, fontWeight: '600' }}>{n}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <View style={styles.switchRow}>
-        <Text style={{ color: theme.textPrimary }}>Digits</Text>
-        <Switch value={digits} onValueChange={setDigits} trackColor={{ false: theme.fill, true: theme.switchTrack }} />
-      </View>
-      <View style={styles.switchRow}>
-        <Text style={{ color: theme.textPrimary }}>Symbols</Text>
-        <Switch value={symbols} onValueChange={setSymbols} trackColor={{ false: theme.fill, true: theme.switchTrack }} />
-      </View>
-      {result ? (
-        <View style={{ marginTop: 12 }}>
-          <Text selectable style={[styles.generated, { color: theme.textPrimary, borderColor: theme.borderStrong }]}>{result.password}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <StatusPill theme={theme} tone={strengthTone(result.strength.score)} label={result.strength.label} />
-            <Text style={{ color: theme.textTertiary, fontSize: 12 }}>{Math.round(result.entropyBits)} bits</Text>
+    <GlassSheet visible={visible} onClose={onClose} title="Add credential">
+      <View style={{ gap: 12 }}>
+        <GlassCard theme={theme}>
+          <Text style={labelStyle(theme)}>Website / app</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <AppIconTile k={brandKey} size={32} />
+            <TextInput
+              value={website}
+              onChangeText={setWebsite}
+              placeholder="github.com"
+              placeholderTextColor={theme.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[styles.input, { flex: 1, color: theme.textPrimary, borderColor: theme.borderStrong }]}
+            />
+          </View>
+          {suggestions.length ? (
+            <View style={{ marginTop: 8, gap: 4 }}>
+              {suggestions.slice(0, 5).map((s) => (
+                <TouchableOpacity
+                  key={s.domain}
+                  onPress={() => setWebsite(s.domain)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}
+                >
+                  <AppIconTile k={brandIconForWebsite(s.domain) || 'web'} size={22} />
+                  <Text style={{ color: theme.textSecondary, fontSize: 13 }}>{s.name} · {s.domain}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+        </GlassCard>
+
+        {!extraType ? (
+          <>
+            <Text style={labelStyle(theme)}>Sign in with</Text>
+            <Segmented theme={theme} value={idType} options={ID_TYPES} onChange={setIdType} />
+            <GlassCard theme={theme}>
+              {idType === 'phone' ? (
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const idx = PHONE_COUNTRIES.findIndex((c) => c.code === dial.code);
+                      setDial(PHONE_COUNTRIES[(idx + 1) % PHONE_COUNTRIES.length]);
+                    }}
+                    style={[styles.dial, { borderColor: theme.borderStrong }]}
+                  >
+                    <Text style={{ color: theme.textPrimary, fontWeight: '700' }}>{dial.code} {dial.dial}</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    value={identifier}
+                    onChangeText={setIdentifier}
+                    placeholder="Phone number"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={theme.textTertiary}
+                    style={[styles.input, { flex: 1, color: theme.textPrimary, borderColor: theme.borderStrong }]}
+                  />
+                </View>
+              ) : (
+                <TextInput
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  placeholder={idType === 'email' ? 'name@example.com' : idType === 'api_key' ? 'Key name (optional)' : 'Username'}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType={idType === 'email' ? 'email-address' : 'default'}
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong }]}
+                />
+              )}
+              <View style={{ marginTop: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={labelStyle(theme)}>{idType === 'api_key' ? 'Token' : 'Password'}</Text>
+                  {password ? <StrengthBadge theme={theme} password={password} /> : null}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPass}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholderTextColor={theme.textTertiary}
+                    style={[styles.input, { flex: 1, color: theme.textPrimary, borderColor: theme.borderStrong }]}
+                  />
+                  <TouchableOpacity onPress={() => setShowPass((v) => !v)}>
+                    <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={22} color={theme.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+                {password && isWeakScore(scorePassword(password).score) ? (
+                  <Text style={{ color: theme.warning || '#FF9F0A', fontSize: 12, marginTop: 6 }}>
+                    Weak password — consider a stronger one from your password manager.
+                  </Text>
+                ) : null}
+              </View>
+            </GlassCard>
+
+            <TouchableOpacity onPress={() => setShow2fa((v) => !v)} style={styles.rowBetween}>
+              <Text style={{ color: theme.info, fontWeight: '700' }}>{show2fa ? 'Hide 2FA' : 'Add 2FA'}</Text>
+              <Ionicons name={show2fa ? 'chevron-up' : 'chevron-down'} size={18} color={theme.info} />
+            </TouchableOpacity>
+            {show2fa ? (
+              <GlassCard theme={theme}>
+                <Text style={labelStyle(theme)}>Authenticator setup key</Text>
+                <TextInput
+                  value={totpSecret}
+                  onChangeText={setTotpSecret}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  placeholder="Base32 setup key"
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong }]}
+                />
+                <Text style={{ color: theme.textTertiary, fontSize: 12, marginTop: 6 }}>
+                  Paste the setup key from your service. QR scanning is available from the Authenticator tab.
+                </Text>
+              </GlassCard>
+            ) : null}
+
+            <TouchableOpacity onPress={() => setShowMore((v) => !v)}>
+              <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>
+                {showMore ? 'Hide notes & tags' : 'Notes & tags'}
+              </Text>
+            </TouchableOpacity>
+            {showMore ? (
+              <GlassCard theme={theme}>
+                <TextInput
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Notes"
+                  multiline
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong, minHeight: 72 }]}
+                />
+                <TextInput
+                  value={tags}
+                  onChangeText={setTags}
+                  placeholder="Tags (comma-separated)"
+                  autoCapitalize="none"
+                  placeholderTextColor={theme.textTertiary}
+                  style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong, marginTop: 8 }]}
+                />
+              </GlassCard>
+            ) : null}
+          </>
+        ) : (
+          <GlassCard theme={theme}>
+            <Text style={labelStyle(theme)}>{extraType === 'ssh_key' ? 'Private key' : 'Note'}</Text>
+            <TextInput
+              value={extraBody}
+              onChangeText={setExtraBody}
+              multiline
+              placeholderTextColor={theme.textTertiary}
+              style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong, minHeight: 120 }]}
+            />
+            <TextInput
+              value={identifier}
+              onChangeText={setIdentifier}
+              placeholder="Title"
+              placeholderTextColor={theme.textTertiary}
+              style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong, marginTop: 8 }]}
+            />
+          </GlassCard>
+        )}
+
+        <TouchableOpacity
+          onPress={save}
+          disabled={saving}
+          style={[styles.primaryBtn, { backgroundColor: theme.info || '#0A84FF' }]}
+        >
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>Save</Text>}
+        </TouchableOpacity>
+
+        <View style={{ marginTop: 8, gap: 8 }}>
+          <Text style={{ color: theme.textTertiary, fontSize: 12, fontWeight: '600' }}>More types</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setExtraType(extraType === 'secure_note' ? null : 'secure_note')}
+              style={[styles.chipBtn, { borderColor: theme.borderStrong }]}
+            >
+              <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Secure note</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setExtraType(extraType === 'ssh_key' ? null : 'ssh_key')}
+              style={[styles.chipBtn, { borderColor: theme.borderStrong }]}
+            >
+              <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>SSH key</Text>
+            </TouchableOpacity>
           </View>
         </View>
+      </View>
+    </GlassSheet>
+  );
+}
+
+function CsvImportSheet({ visible, onClose, theme, onImported }) {
+  const [items, setItems] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+
+  const pick = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'text/plain', '*/*'], copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    try {
+      const asset = res.assets[0];
+      const resp = await fetch(asset.uri);
+      const text = await resp.text();
+      const parsed = parsePasswordCsv(text);
+      if (!parsed.success) {
+        Alert.alert('No logins found', parsed.error || 'Unrecognized CSV');
+        return;
+      }
+      setItems(parsed.items || []);
+      setSelected(new Set((parsed.items || []).map((_, i) => i)));
+    } catch (e) {
+      Alert.alert('Import failed', e?.message || 'Could not read file');
+    }
+  };
+
+  const toggle = (i) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const runImport = async () => {
+    setBusy(true);
+    try {
+      await requireVaultUnlock({ reason: 'Import passwords' });
+      let n = 0;
+      for (const i of selected) {
+        const row = items[i];
+        if (!row) continue;
+        await createVaultItem({
+          type: 'login',
+          title: row.name || row.url || row.username || 'Imported',
+          website: normalizeWebsite(row.url) || null,
+          username: row.username || null,
+          tags: ['imported'],
+          secret: { password: row.password || '', totpSecret: row.totp || undefined, note: row.notes },
+          hasTotp: !!row.totp,
+        });
+        n += 1;
+      }
+      Alert.alert('Imported', n + ' credential' + (n === 1 ? '' : 's') + ' added.');
+      onImported?.();
+      onClose?.();
+      setItems([]);
+    } catch (e) {
+      Alert.alert('Import failed', e?.message || 'Unknown error');
+    }
+    setBusy(false);
+  };
+
+  const selectedItems = items.map((it, i) => ({ ...it, selected: selected.has(i) }));
+  const summary = importSelectionSummary(selectedItems);
+
+  return (
+    <GlassSheet visible={visible} onClose={onClose} title="Import CSV">
+      <TouchableOpacity onPress={pick} style={[styles.primaryBtn, { backgroundColor: theme.info || '#0A84FF' }]}>
+        <Text style={{ color: '#fff', fontWeight: '800' }}>Choose CSV file</Text>
+      </TouchableOpacity>
+      <Text style={{ color: theme.textTertiary, fontSize: 12, marginVertical: 10 }}>
+        Supports Chrome, 1Password, Bitwarden, and LastPass exports.
+      </Text>
+      {items.length ? (
+        <>
+          <Text style={{ color: theme.textSecondary, marginBottom: 8 }}>
+            {summary.selected} selected · {summary.withTotp} with 2FA
+          </Text>
+          {items.map((row, i) => (
+            <TouchableOpacity key={`${row.url}-${i}`} onPress={() => toggle(i)} style={{ marginBottom: 8 }}>
+              <GlassCard theme={theme}>
+                <View style={styles.rowBetween}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                    <AppIconTile k={brandIconForWebsite(row.url) || 'web'} size={28} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.textPrimary, fontWeight: '700' }} numberOfLines={1}>
+                        {row.name || row.url || 'Login'}
+                      </Text>
+                      <Text style={{ color: theme.textSecondary, fontSize: 12 }} numberOfLines={1}>
+                        {row.username || '—'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name={selected.has(i) ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={selected.has(i) ? (theme.info || '#0A84FF') : theme.textTertiary}
+                  />
+                </View>
+              </GlassCard>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            disabled={busy || !selected.size}
+            onPress={runImport}
+            style={[styles.primaryBtn, { backgroundColor: theme.info || '#0A84FF', opacity: selected.size ? 1 : 0.5 }]}
+          >
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '800' }}>Import selected</Text>}
+          </TouchableOpacity>
+        </>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-        <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.accent, flex: 1 }]} onPress={run} disabled={busy}>
-          <Text style={{ color: theme.textInverse, fontWeight: '700' }}>Regenerate</Text>
-        </TouchableOpacity>
+    </GlassSheet>
+  );
+}
+
+function AuthenticatorPanel({ theme }) {
+  const [items, setItems] = useState([]);
+  const [codes, setCodes] = useState({});
+  const [scanning, setScanning] = useState(false);
+  const [setupKey, setSetupKey] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [permission, requestPermission] = useCameraPermissions();
+  const handledQr = useRef(false);
+
+  const reload = useCallback(async () => {
+    const r = await listAuthenticatorItems();
+    setItems(r.data || []);
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      const next = {};
+      for (const item of items) {
+        try {
+          const revealed = await revealVaultSecret(item.id, { reason: 'totp' });
+          const secret = revealed?.data?.secret || revealed?.data;
+          if (secret?.secret) {
+            const code = await totp(secret.secret, {
+              algorithm: secret.algorithm,
+              digits: secret.digits,
+              period: secret.period,
+            });
+            next[item.id] = { code, progress: totpProgress(undefined, secret.period || 30) };
+          }
+        } catch (_) { /* locked or missing */ }
+      }
+      if (alive) setCodes(next);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => { alive = false; clearInterval(id); };
+  }, [items]);
+
+  const addFromUri = async (uri) => {
+    const parsed = parseOtpAuthUri(uri);
+    if (!parsed.success || !parsed.data) {
+      Alert.alert('Invalid QR', parsed.error || 'Could not parse otpauth URI');
+      return;
+    }
+    const d = parsed.data;
+    await requireVaultUnlock({ reason: 'Add authenticator' });
+    await createVaultItem({
+      type: 'authenticator',
+      title: d.label || d.issuer || 'Authenticator',
+      website: d.issuer || null,
+      username: d.account || d.label || null,
+      issuer: d.issuer || null,
+      hasTotp: true,
+      secret: {
+        secret: d.secret,
+        algorithm: d.algorithm,
+        digits: d.digits,
+        period: d.period,
+        otpType: d.type || 'totp',
+        counter: d.counter,
+      },
+    });
+    setScanning(false);
+    reload();
+  };
+
+  const addFromKey = async () => {
+    const v = validateBase32Secret(setupKey);
+    if (!v.ok) {
+      Alert.alert('Invalid key', 'Setup key must be base32.');
+      return;
+    }
+    await requireVaultUnlock({ reason: 'Add authenticator' });
+    await createVaultItem({
+      type: 'authenticator',
+      title: issuer || 'Authenticator',
+      issuer: issuer || null,
+      hasTotp: true,
+      secret: { secret: v.secret, otpType: 'totp', period: 30, digits: 6, algorithm: 'SHA1' },
+    });
+    setSetupKey('');
+    setIssuer('');
+    reload();
+  };
+
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
         <TouchableOpacity
-          style={[styles.secondaryBtn, { borderColor: theme.borderStrong, flex: 1 }]}
           onPress={async () => {
-            if (!result) return;
-            await copySecret(result.password);
-            haptic.success();
+            handledQr.current = false;
+            if (!permission?.granted) {
+              const r = await requestPermission();
+              if (!r.granted) {
+                Alert.alert('Camera needed', 'Allow camera access to scan authenticator QR codes.');
+                return;
+              }
+            }
+            setScanning(true);
           }}
+          style={[styles.chipBtn, { borderColor: theme.borderStrong }]}
         >
-          <Text style={{ color: theme.info, fontWeight: '700' }}>Copy</Text>
+          <Text style={{ color: theme.info, fontWeight: '700' }}>Scan QR</Text>
         </TouchableOpacity>
       </View>
-      {onUse && result ? (
-        <TouchableOpacity style={{ marginTop: 12 }} onPress={() => onUse(result.password)}>
-          <Text style={{ color: theme.accent, fontWeight: '600', textAlign: 'center' }}>Use this password</Text>
-        </TouchableOpacity>
+
+      {scanning ? (
+        <View style={{ height: 240, borderRadius: 16, overflow: 'hidden' }}>
+          <CameraView
+            style={{ flex: 1 }}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={({ data }) => {
+              if (handledQr.current) return;
+              handledQr.current = true;
+              addFromUri(data);
+            }}
+          />
+          <TouchableOpacity onPress={() => setScanning(false)} style={{ position: 'absolute', top: 10, right: 10 }}>
+            <StatusPill theme={theme} tone="neutral" label="Close" />
+          </TouchableOpacity>
+        </View>
       ) : null}
+
+      <GlassCard theme={theme}>
+        <Text style={labelStyle(theme)}>Or enter setup key</Text>
+        <TextInput
+          value={issuer}
+          onChangeText={setIssuer}
+          placeholder="Issuer (e.g. GitHub)"
+          placeholderTextColor={theme.textTertiary}
+          style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong }]}
+        />
+        <TextInput
+          value={setupKey}
+          onChangeText={setSetupKey}
+          placeholder="Base32 setup key"
+          autoCapitalize="characters"
+          placeholderTextColor={theme.textTertiary}
+          style={[styles.input, { color: theme.textPrimary, borderColor: theme.borderStrong, marginTop: 8 }]}
+        />
+        <TouchableOpacity onPress={addFromKey} style={{ marginTop: 10 }}>
+          <Text style={{ color: theme.info, fontWeight: '700' }}>Add account</Text>
+        </TouchableOpacity>
+      </GlassCard>
+
+      {items.map((item) => {
+        const c = codes[item.id];
+        return (
+          <GlassCard key={item.id} theme={theme}>
+            <View style={styles.rowBetween}>
+              <View>
+                <Text style={{ color: theme.textPrimary, fontWeight: '700' }}>{item.title}</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 12 }}>{item.issuer || item.website || ''}</Text>
+              </View>
+              <TouchableOpacity onPress={() => c?.code && copySecret(c.code)}>
+                <Text style={{ color: theme.textPrimary, fontWeight: '800', fontSize: 22, fontVariant: ['tabular-nums'] }}>
+                  {c?.code || '••••••'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        );
+      })}
+    </View>
+  );
+}
+
+function VaultListItem({ theme, item, onReveal, onDelete }) {
+  const brand = brandIconForWebsite(item.website) || 'web';
+  const idLabel = item.username || (item.type === 'api_key' ? 'API key' : item.type);
+  return (
+    <GlassCard theme={theme}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <AppIconTile k={brand} size={34} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.textPrimary, fontWeight: '700' }} numberOfLines={1}>
+            {item.title || item.website || 'Item'}
+          </Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 12 }} numberOfLines={1}>
+            {item.website ? `${item.website} · ` : ''}{idLabel}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+            <StatusPill theme={theme} tone="neutral" label={item.type} />
+            {item.hasTotp ? <StatusPill theme={theme} tone="info" label="2FA" /> : null}
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => onReveal(item)} hitSlop={8}>
+          <Ionicons name="eye-outline" size={22} color={theme.info || '#0A84FF'} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onDelete(item)} hitSlop={8}>
+          <Ionicons name="trash-outline" size={20} color={theme.dangerText || '#FF453A'} />
+        </TouchableOpacity>
+      </View>
     </GlassCard>
   );
 }
 
-function ItemDetail({ theme, item, onBack, onChanged }) {
-  const [secret, setSecret] = useState(null);
-  const [revealed, setRevealed] = useState(false);
-  const [totpCode, setTotpCode] = useState(null);
-  const [remaining, setRemaining] = useState(30);
+export function VaultSheet({ visible, onClose, theme }) {
+  const [locked, setLocked] = useState(!getVaultLockState().unlocked);
+  const [items, setItems] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [tab, setTab] = useState('items'); // items | authenticator
+  const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const loadSecret = async () => {
-    const r = await revealVaultSecret(item.id, { reason: 'Reveal vault item' });
-    if (!r.success) {
-      Alert.alert('Locked', 'Unlock the vault to reveal this secret.');
-      return;
-    }
-    setSecret(r.data);
-    setRevealed(true);
-    touchVaultActivity();
-  };
+  useEffect(() => subscribeVaultLock(() => setLocked(!getVaultLockState().unlocked)), []);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const listed = await listVaultItems({ includeConnectorManaged: true });
+      setItems(listed.data || []);
+      const sum = await getVaultSecuritySummary();
+      setSummary(sum.data || null);
+    } catch (_) { /* ignore */ }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (!secret?.totpSecret) return undefined;
-    let cancelled = false;
-    const tick = async () => {
-      const t = await totp(secret.totpSecret);
-      if (!cancelled) {
-        setTotpCode(t.code);
-        setRemaining(t.remaining);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [secret?.totpSecret]);
+    if (visible && !locked) reload();
+  }, [visible, locked, reload]);
 
-  const doDelete = () => {
-    if (item.managedByConnector) {
-      Alert.alert('Managed by connector', 'Disconnect the connector to remove this token.');
-      return;
+  const onUnlock = async () => {
+    const r = await unlockVault({ reason: 'Unlock Vault' });
+    if (!r.success) Alert.alert('Unlock failed', r.error || 'Could not unlock');
+  };
+
+  const onReveal = async (item) => {
+    try {
+      await requireVaultUnlock({ reason: 'Reveal secret' });
+      const r = await revealVaultSecret(item.id, { reason: 'reveal' });
+      const secret = r?.data?.secret || r?.data || {};
+      const value = secret.password || secret.token || secret.note || secret.privateKey || JSON.stringify(secret);
+      Alert.alert(item.title || 'Secret', String(value).slice(0, 500), [
+        { text: 'Copy', onPress: () => copySecret(String(value)) },
+        { text: 'OK' },
+      ]);
+    } catch (e) {
+      Alert.alert('Locked', e?.message || 'Unlock required');
     }
-    Alert.alert('Delete item?', `Remove “${item.title}” permanently.`, [
+  };
+
+  const onDelete = (item) => {
+    Alert.alert('Delete?', item.title || 'Item', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
+          await requireVaultUnlock({ reason: 'Delete vault item' });
           await deleteVaultItem(item.id);
-          await onChanged?.();
-          onBack();
+          reload();
         },
       },
     ]);
   };
 
-  const passwordScore = secret?.password ? scorePassword(secret.password) : null;
-
   return (
-    <View>
-      <TouchableOpacity onPress={onBack} style={{ marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Ionicons name="chevron-back" size={18} color={theme.info} />
-        <Text style={{ color: theme.info, fontWeight: '600' }}>All items</Text>
-      </TouchableOpacity>
-
-      <GlassCard theme={theme}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <AppIconTile k={vaultIconKey(item)} size={44} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }}>{item.title}</Text>
-            {item.username ? <Text style={{ color: theme.textSecondary, marginTop: 2 }}>{item.username}</Text> : null}
-            {item.website ? <Text style={{ color: theme.textTertiary, fontSize: 13 }}>{item.website}</Text> : null}
-          </View>
-        </View>
-        {item.managedByConnector ? (
-          <View style={{ marginTop: 12 }}>
-            <StatusPill theme={theme} tone="info" label="Managed by connector" />
-          </View>
-        ) : null}
-        <Text style={{ color: theme.textTertiary, fontSize: 12, marginTop: 12 }}>
-          Last modified · {formatRelative(item.updatedAt)}
-        </Text>
-      </GlassCard>
-
-      {!revealed ? (
-        <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.accent }]} onPress={loadSecret}>
-          <Text style={{ color: theme.textInverse, fontWeight: '700' }}>Authenticate to reveal</Text>
-        </TouchableOpacity>
-      ) : (
-        <GlassCard theme={theme}>
-          {item.type === 'login' && (
-            <>
-              <MaskedField theme={theme} label="Password" value={secret?.password} />
-              {passwordScore ? (
-                <View style={{ marginTop: 8 }}>
-                  <StatusPill theme={theme} tone={strengthTone(passwordScore.score)} label={passwordScore.label} />
-                </View>
-              ) : null}
-              {secret?.totpSecret ? (
-                <View style={{ marginTop: 16 }}>
-                  <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>One-time code</Text>
-                  <TotpRing theme={theme} code={totpCode} remaining={remaining} />
-                  <TouchableOpacity
-                    style={{ marginTop: 10 }}
-                    onPress={async () => { if (totpCode) { await copySecret(totpCode); haptic.success(); } }}
-                  >
-                    <Text style={{ color: theme.info, fontWeight: '600', textAlign: 'center' }}>Copy code</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </>
-          )}
-          {(item.type === 'api_key' || item.type === 'connector_token') && (
-            <MaskedField theme={theme} label="Token" value={secret?.token} />
-          )}
-          {item.type === 'secure_note' && (
-            <MaskedField theme={theme} label="Note" value={secret?.body} multiline />
-          )}
-          {item.type === 'ssh_key' && (
-            <>
-              <MaskedField theme={theme} label="Private key" value={secret?.privateKey} multiline />
-              {secret?.publicKey ? <MaskedField theme={theme} label="Public key" value={secret.publicKey} multiline /> : null}
-            </>
-          )}
-        </GlassCard>
-      )}
-
-      {!item.managedByConnector ? (
-        <TouchableOpacity style={[styles.dangerBtn, { borderColor: theme.dangerBorder, marginTop: 8 }]} onPress={doDelete}>
-          <Text style={{ color: theme.dangerText, fontWeight: '700' }}>Delete</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-}
-
-function MaskedField({ theme, label, value, multiline }) {
-  const [show, setShow] = useState(false);
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>{label}</Text>
-      <View style={[styles.secretBox, { borderColor: theme.borderStrong }]}>
-        <Text
-          selectable
-          style={{ color: theme.textPrimary, fontFamily: multiline ? 'monospace' : undefined, flex: 1 }}
-        >
-          {show ? (value || '') : '••••••••••••'}
-        </Text>
-        <TouchableOpacity onPress={() => setShow((v) => !v)} hitSlop={8}>
-          <Ionicons name={show ? 'eye-off' : 'eye'} size={18} color={theme.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={async () => { await copySecret(value || ''); haptic.success(); }}
-          hitSlop={8}
-          style={{ marginLeft: 10 }}
-        >
-          <Ionicons name="copy-outline" size={18} color={theme.info} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-function NewItemForm({ theme, onDone, onCancel }) {
-  const [type, setType] = useState('login');
-  const [title, setTitle] = useState('');
-  const [website, setWebsite] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [totpSecret, setTotpSecret] = useState('');
-  const [token, setToken] = useState('');
-  const [body, setBody] = useState('');
-  const [privateKey, setPrivateKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [showGen, setShowGen] = useState(false);
-
-  const save = async () => {
-    if (!title.trim()) {
-      Alert.alert('Title required');
-      return;
-    }
-    setBusy(true);
-    let secret = {};
-    if (type === 'login') secret = { password, totpSecret: totpSecret.trim() || undefined };
-    else if (type === 'api_key') secret = { token };
-    else if (type === 'secure_note') secret = { body };
-    else if (type === 'ssh_key') secret = { privateKey };
-    const result = await createVaultItem({
-      type,
-      title: title.trim(),
-      website: website.trim() || null,
-      username: username.trim() || null,
-      secret,
-      hasTotp: !!totpSecret.trim(),
-    });
-    setBusy(false);
-    if (result.success) {
-      haptic.success();
-      onDone();
-    } else {
-      Alert.alert('Could not save', result.error || 'Unknown error');
-    }
-  };
-
-  return (
-    <View>
-      <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Type</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {['login', 'api_key', 'secure_note', 'ssh_key'].map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setType(t)}
-            style={[styles.chip, { backgroundColor: type === t ? theme.accentSoft : theme.surfaceAlt, borderColor: type === t ? theme.accent : theme.border }]}
-          >
-            <Text style={{ color: type === t ? theme.accent : theme.textSecondary, fontWeight: '600' }}>
-              {TYPE_FILTERS.find((f) => f.id === t)?.label || t}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <GlassCard theme={theme}>
-        <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="Title" placeholderTextColor={theme.textTertiary} value={title} onChangeText={setTitle} />
-        {(type === 'login' || type === 'api_key') && (
-          <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="Website" placeholderTextColor={theme.textTertiary} autoCapitalize="none" value={website} onChangeText={setWebsite} />
-        )}
-        {(type === 'login' || type === 'api_key') && (
-          <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="Username" placeholderTextColor={theme.textTertiary} autoCapitalize="none" value={username} onChangeText={setUsername} />
-        )}
-        {type === 'login' && (
-          <>
-            <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="Password" placeholderTextColor={theme.textTertiary} secureTextEntry value={password} onChangeText={setPassword} />
-            <TouchableOpacity onPress={() => setShowGen((v) => !v)} style={{ marginBottom: 10 }}>
-              <Text style={{ color: theme.info, fontWeight: '600' }}>{showGen ? 'Hide generator' : 'Generate password'}</Text>
+    <>
+      <GlassSheet
+        visible={visible}
+        onClose={onClose}
+        title="Vault"
+        right={
+          !locked ? (
+            <TouchableOpacity
+              onPress={() => { haptic.light(); setAddOpen(true); }}
+              style={styles.plusWrap}
+            >
+              <View style={[styles.plusCircle, glassSurface(theme, 1)]}>
+                <GlassFill theme={theme} radius={22} strong />
+                <Ionicons name="add" size={24} color={theme.textPrimary} />
+              </View>
             </TouchableOpacity>
-            {showGen ? <GeneratorPanel theme={theme} onUse={(p) => { setPassword(p); setShowGen(false); }} /> : null}
-            <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="TOTP secret (optional)" placeholderTextColor={theme.textTertiary} autoCapitalize="none" value={totpSecret} onChangeText={setTotpSecret} />
-          </>
+          ) : null
+        }
+        scroll={false}
+      >
+        {locked ? (
+          <View style={{ alignItems: 'center', paddingTop: 48, gap: 16 }}>
+            <AppIconTile k="vault" size={56} />
+            <Text style={{ color: theme.textPrimary, fontWeight: '700', fontSize: 18 }}>Vault is locked</Text>
+            <TouchableOpacity onPress={onUnlock} style={[styles.primaryBtn, { backgroundColor: theme.info || '#0A84FF', paddingHorizontal: 28 }]}>
+              <Text style={{ color: '#fff', fontWeight: '800' }}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <Segmented
+              theme={theme}
+              value={tab}
+              options={[{ id: 'items', label: 'Logins' }, { id: 'authenticator', label: 'Authenticator' }]}
+              onChange={setTab}
+            />
+            {summary ? (
+              <View style={{ flexDirection: 'row', gap: 8, marginVertical: 10, flexWrap: 'wrap' }}>
+                <StatusPill theme={theme} tone="neutral" label={`${summary.total ?? items.length} items`} />
+                {summary.weakCount ? <StatusPill theme={theme} tone="warn" label={`${summary.weakCount} weak`} /> : null}
+                {summary.reusedCount ? <StatusPill theme={theme} tone="bad" label={`${summary.reusedCount} reused`} /> : null}
+              </View>
+            ) : null}
+            <TouchableOpacity onPress={() => setImportOpen(true)} style={{ marginBottom: 10 }}>
+              <Text style={{ color: theme.info, fontWeight: '700' }}>Import CSV…</Text>
+            </TouchableOpacity>
+            {loading ? <ActivityIndicator color={theme.info} /> : null}
+            {tab === 'items' ? (
+              <FlatList
+                data={items.filter((i) => i.type !== 'authenticator')}
+                keyExtractor={(i) => i.id}
+                contentContainerStyle={{ paddingBottom: 40 }}
+                ListEmptyComponent={
+                  <GlassCard theme={theme}>
+                    <Text style={{ color: theme.textPrimary, fontWeight: '700' }}>No credentials yet</Text>
+                    <Text style={{ color: theme.textSecondary, marginTop: 6 }}>
+                      Tap + to import a login you already have, or import a CSV from Chrome / 1Password / Bitwarden / LastPass.
+                    </Text>
+                  </GlassCard>
+                }
+                renderItem={({ item }) => (
+                  <View style={{ marginBottom: 10 }}>
+                    <VaultListItem theme={theme} item={item} onReveal={onReveal} onDelete={onDelete} />
+                  </View>
+                )}
+              />
+            ) : (
+              <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                <AuthenticatorPanel theme={theme} />
+              </ScrollView>
+            )}
+          </View>
         )}
-        {type === 'api_key' && (
-          <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary }]} placeholder="API key / token" placeholderTextColor={theme.textTertiary} secureTextEntry value={token} onChangeText={setToken} />
-        )}
-        {type === 'secure_note' && (
-          <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary, minHeight: 100 }]} placeholder="Secure note" placeholderTextColor={theme.textTertiary} multiline value={body} onChangeText={setBody} />
-        )}
-        {type === 'ssh_key' && (
-          <TextInput style={[styles.input, { borderColor: theme.borderStrong, color: theme.textPrimary, minHeight: 120, fontFamily: 'monospace' }]} placeholder="Private key" placeholderTextColor={theme.textTertiary} multiline value={privateKey} onChangeText={setPrivateKey} />
-        )}
-      </GlassCard>
-      <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.accent, opacity: busy ? 0.6 : 1 }]} onPress={save} disabled={busy}>
-        <Text style={{ color: theme.textInverse, fontWeight: '700' }}>Save</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={{ marginTop: 12 }} onPress={onCancel}>
-        <Text style={{ color: theme.textSecondary, textAlign: 'center', fontWeight: '600' }}>Cancel</Text>
-      </TouchableOpacity>
-    </View>
+      </GlassSheet>
+
+      <AddCredentialSheet
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        theme={theme}
+        onSaved={reload}
+      />
+      <CsvImportSheet
+        visible={importOpen}
+        onClose={() => setImportOpen(false)}
+        theme={theme}
+        onImported={reload}
+      />
+    </>
   );
 }
 
-export function VaultSheet({ visible, onClose, theme }) {
-  const [lock, setLock] = useState(getVaultLockState());
-  const [items, setItems] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [query, setQuery] = useState('');
-  const [type, setType] = useState('all');
-  const [selected, setSelected] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [showGenerator, setShowGenerator] = useState(false);
-  const preferences = usePreferencesStore((s) => s.preferences);
-
-  useEffect(() => {
-    ensureVaultAppStateWatcher();
-    return subscribeVaultLock(setLock);
-  }, []);
-
-  const refresh = useCallback(async () => {
-    const listed = await listVaultItems({ type, query });
-    setItems(listed.data || []);
-    const sum = await getVaultSecuritySummary();
-    setSummary(sum.data);
-  }, [type, query]);
-
-  useEffect(() => {
-    if (!visible) return;
-    (async () => {
-      await migrateGithubTokenIntoVault(preferences?.github_username);
-      await refresh();
-    })();
-  }, [visible, refresh, preferences?.github_username]);
-
-  const unlock = async () => {
-    const r = await unlockVault({ reason: 'Unlock ZAO Vault' });
-    if (r.success) {
-      haptic.success();
-      await refresh();
-    }
-  };
-
-  const userItems = items.filter((i) => !i.managedByConnector);
-  const connectorItems = items.filter((i) => i.managedByConnector);
-
-  return (
-    <GlassSheet
-      visible={visible}
-      onClose={() => { lockVault(); onClose?.(); }}
-      title="Vault"
-      right={
-        lock.unlocked ? (
-          <TouchableOpacity onPress={() => { lockVault(); haptic.light(); }} hitSlop={8}>
-            <Text style={{ color: theme.info, fontWeight: '600', marginRight: 8 }}>Lock</Text>
-          </TouchableOpacity>
-        ) : null
-      }
-    >
-      {!lock.unlocked ? (
-        <GlassCard theme={theme}>
-          <AppIconTile k="vault" size={56} />
-          <Text style={{ color: theme.textPrimary, fontSize: 22, fontWeight: '700', marginTop: 14 }}>Credential vault</Text>
-          <Text style={{ color: theme.textSecondary, marginTop: 8, lineHeight: 20 }}>
-            Secrets stay in the device Keychain. Unlock with biometrics or your device passcode.
-          </Text>
-          <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.accent, marginTop: 18 }]} onPress={unlock}>
-            <Text style={{ color: theme.textInverse, fontWeight: '700' }}>Unlock vault</Text>
-          </TouchableOpacity>
-        </GlassCard>
-      ) : (
-        <>
-          <GlassCard theme={theme}>
-            <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600', textTransform: 'uppercase' }}>Security</Text>
-            <Text style={{ color: theme.textPrimary, fontSize: 34, fontWeight: '800', marginTop: 4 }}>{summary?.total ?? 0}</Text>
-            <Text style={{ color: theme.textSecondary }}>items protected</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-              {(summary?.weakCount > 0) ? <StatusPill theme={theme} tone="warn" label={`${summary.weakCount} weak`} /> : <StatusPill theme={theme} tone="ok" label="No weak passwords" />}
-              {(summary?.reusedCount > 0) ? <StatusPill theme={theme} tone="bad" label={`${summary.reusedCount} reused`} /> : <StatusPill theme={theme} tone="ok" label="No reuse" />}
-              {(summary?.connectorManaged > 0) ? <StatusPill theme={theme} tone="info" label={`${summary.connectorManaged} connector`} /> : null}
-            </View>
-          </GlassCard>
-
-          {creating ? (
-            <NewItemForm theme={theme} onDone={() => { setCreating(false); refresh(); }} onCancel={() => setCreating(false)} />
-          ) : selected ? (
-            <ItemDetail theme={theme} item={selected} onBack={() => setSelected(null)} onChanged={refresh} />
-          ) : showGenerator ? (
-            <>
-              <TouchableOpacity onPress={() => setShowGenerator(false)} style={{ marginBottom: 8 }}>
-                <Text style={{ color: theme.info, fontWeight: '600' }}>Back</Text>
-              </TouchableOpacity>
-              <GeneratorPanel theme={theme} />
-            </>
-          ) : (
-            <>
-              <View style={[styles.searchWrap, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-                <Ionicons name="search" size={18} color={theme.textTertiary} />
-                <TextInput
-                  style={[styles.searchInput, { color: theme.textPrimary }]}
-                  placeholder="Search vault"
-                  placeholderTextColor={theme.textTertiary}
-                  value={query}
-                  onChangeText={setQuery}
-                  autoCapitalize="none"
-                />
-              </View>
-              <View style={styles.chips}>
-                {TYPE_FILTERS.map((f) => {
-                  const on = type === f.id;
-                  return (
-                    <TouchableOpacity
-                      key={f.id}
-                      onPress={() => { haptic.select(); setType(f.id); }}
-                      style={[styles.chip, { backgroundColor: on ? theme.accentSoft : theme.surfaceAlt, borderColor: on ? theme.accent : theme.border }]}
-                    >
-                      <Text style={{ color: on ? theme.accent : theme.textSecondary, fontSize: 13, fontWeight: '600' }}>{f.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
-                <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.accent, flex: 1 }]} onPress={() => setCreating(true)}>
-                  <Text style={{ color: theme.textInverse, fontWeight: '700' }}>New item</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.secondaryBtn, { borderColor: theme.borderStrong }]} onPress={() => setShowGenerator(true)}>
-                  <Text style={{ color: theme.info, fontWeight: '700' }}>Generator</Text>
-                </TouchableOpacity>
-              </View>
-
-              {userItems.length === 0 && connectorItems.length === 0 ? (
-                <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 30 }}>Vault is empty.</Text>
-              ) : null}
-
-              {userItems.length > 0 ? (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Items</Text>
-                  <GlassCard theme={theme} style={{ paddingVertical: 4, paddingHorizontal: 4 }}>
-                    {userItems.map((item, i) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}
-                        onPress={() => { haptic.light(); setSelected(item); }}
-                      >
-                        <AppIconTile k={vaultIconKey(item)} size={32} />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: 16 }}>{item.title}</Text>
-                          <Text style={{ color: theme.textSecondary, fontSize: 13 }} numberOfLines={1}>
-                            {item.username || item.website || item.type}
-                          </Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={theme.chevron} />
-                      </TouchableOpacity>
-                    ))}
-                  </GlassCard>
-                </>
-              ) : null}
-
-              {connectorItems.length > 0 ? (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>Connector tokens</Text>
-                  <GlassCard theme={theme} style={{ paddingVertical: 4, paddingHorizontal: 4 }}>
-                    {connectorItems.map((item, i) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}
-                        onPress={() => { haptic.light(); setSelected(item); }}
-                      >
-                        <AppIconTile k={vaultIconKey(item)} size={32} />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={{ color: theme.textPrimary, fontWeight: '600', fontSize: 16 }}>{item.title}</Text>
-                          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>Managed by connector</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={theme.chevron} />
-                      </TouchableOpacity>
-                    ))}
-                  </GlassCard>
-                </>
-              ) : null}
-            </>
-          )}
-        </>
-      )}
-    </GlassSheet>
-  );
+function labelStyle(theme) {
+  return { color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 6 };
 }
 
 const styles = StyleSheet.create({
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1,
-    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12,
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
   },
-  searchInput: { flex: 1, fontSize: 16 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
-  sectionLabel: {
-    fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4,
-    marginTop: 12, marginBottom: 8, marginLeft: 4,
+  segment: { flexDirection: 'row', padding: 3, borderRadius: 11, gap: 2 },
+  segmentItem: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  primaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  chipBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  dial: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10 },
+  plusWrap: { marginRight: 4 },
+  plusCircle: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 10 },
-  primaryBtn: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  secondaryBtn: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, borderWidth: 1 },
-  dangerBtn: { minHeight: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10, fontSize: 15 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  generated: { fontFamily: 'monospace', fontSize: 15, borderWidth: 1, borderRadius: 10, padding: 12 },
-  secretBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
-  totpWrap: { flexDirection: 'row', alignItems: 'center' },
-  totpRingBox: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  totpRemain: { position: 'absolute', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  totpCode: { fontSize: 28, fontWeight: '800', letterSpacing: 1, fontVariant: ['tabular-nums'] },
 });

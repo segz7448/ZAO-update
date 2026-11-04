@@ -72,6 +72,8 @@ import * as reminderService from './reminders/reminderService';
 import { withProceduralHintReported, recordProcedure } from './memory/proceduralMemory';
 import * as dataAnalysisTool from './data/dataAnalysisTool';
 import { logUsageEvent, getPreferences } from '../db/database';
+import { pluginCreate, pluginInstall, PLUGIN_TOOL_SCHEMAS } from '../plugins/pluginTools';
+import { applyPluginToRequest } from '../plugins/pluginContext';
 import { getToolPermissionDecision } from './execution/permissionModes';
 import { runPreToolUseHooks, runPostToolUseHooks } from './execution/hooksEngine';
 import { newTraceId, startSpan, endSpan } from './execution/telemetry';
@@ -1589,6 +1591,14 @@ export const TOOL_REGISTRY = {
     run: (args) => webFetchTool.fetchUrl(args.url),
     label: (args) => `Fetched ${args.url}`,
   },
+  plugin_create: {
+    run: (args) => pluginCreate(args),
+    label: (args) => `Drafted plugin ${args.name || ''}`.trim(),
+  },
+  plugin_install: {
+    run: (args) => pluginInstall(args),
+    label: (args) => `Installed plugin ${(args.manifest && args.manifest.name) || args.name || ''}`.trim(),
+  },
   bgtask_start: {
     run: (args) => backgroundSessionTool.start(args.prompt),
     label: (args) => `Started background task: ${args.prompt.slice(0, 60)}${args.prompt.length > 60 ? '...' : ''}`,
@@ -2103,7 +2113,7 @@ export async function runToolTask(userRequest, context = {}, onStep = null) {
   const sessionId = context.sessionId || traceId;
   const parentSpanId = context.parentSpanId || null;
 
-  const systemPrompt = `You are ZAO's project manager. The person describes what they want in plain language; you decide which tool functions to call, in what order, to accomplish it - they should never need to name a specific function or press a button themselves.
+  let systemPrompt = `You are ZAO's project manager. The person describes what they want in plain language; you decide which tool functions to call, in what order, to accomplish it - they should never need to name a specific function or press a button themselves.
 
 You have these kinds of tools available: GitHub (github_list_repos to list repos, plus repos, commits, branches, PRs, releases - operates through the GitHub API, not a local checkout or the \`gh\` CLI), PC Filesystem (pc_fs_scaffold_project/pc_fs_create_file/pc_fs_write_binary/pc_fs_edit_file/pc_fs_rename/pc_fs_move/pc_fs_delete/pc_fs_zip/pc_fs_extract_zip, plus pc_fs_read_file/pc_fs_grep/pc_fs_glob for reading and searching - the ONLY place you create, edit, or delete files or folders; real file operations on the PC's own disk, the same place Terminal builds/runs things), PC Git (pc_git_init/status/add/commit/push/pull/checkout/remote_add/log/diff - a real local git repo on the PC, distinct from the GitHub tools above which never touch a local checkout), PC Process (pc_process_start/status/logs/stop - track a long-running background process on the PC by id, separate from the Terminal tool below which blocks until a command exits), Dev Preview (dev_server_start/stop and dev_preview_screenshot - start a dev server as a tracked background process, detect its localhost URL, and screenshot its actual rendered output - use this to run and preview a project's dev server), Phone utilities (phone_clipboard_copy to put text on the phone's clipboard, phone_share_file to open Android's native share sheet for a file already downloaded onto the phone), Data analysis (data_analyze_file - real pandas-backed describe/head/filter/groupby on an existing .csv/.tsv/.xlsx/.xls file already on the PC backend, for anything beyond a quick glance), PDF (create/merge/split, written to the PC backend), Office (docx_create for Word documents, xlsx_create/csv_create for spreadsheets, pptx_create for presentations - write the actual document/spreadsheet/slide content yourself, each tool just turns it into a real file on the PC backend), Terminal, Web Search, and Web Fetch - use whichever combination the request actually needs.
 
@@ -2137,6 +2147,7 @@ Every pc_fs_create_file and pc_fs_edit_file call against a .js/.jsx/.ts/.tsx/.js
 
 Use web_search for anything time-sensitive, current, or that you're not confident about from what you already know - current events, prices, library versions, docs, unfamiliar topics.
 
+For "create a plugin" / "build a plugin that…" requests, call plugin_create with a complete manifest so the person sees an Installable Plugin preview card. Refine via chat, then plugin_install when they confirm.
 For "what time is it" / "what's the time in [place]" requests, call time_get_current - the reply automatically shows a live updating clock, so just name the place in your answer and don't restate the exact time yourself (it may be a few seconds stale by the time the person reads it; the clock widget is always current).
 
 For any task with 3 or more distinct steps, call todo_write first to lay out the plan (one item 'in_progress', the rest 'pending'), then call it again as each step's status changes - this is how the person sees live progress instead of silence until everything finishes.
@@ -2206,6 +2217,7 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
   // single turn - reasonable since the chat bubble can only show one
   // widget.
   let clockData = null;
+  let pluginPreview = null;
   // Set the first time ANY tool call is refused specifically because it
   // needs human confirmation (permissionModes.js's requiresConfirmation -
   // a RISKY terminal command per commandSafety.js, OR a WRITE_TOOL /
@@ -2239,9 +2251,9 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
   // confirmable tool, not just terminal, gets captured here, and
   // approveAndRunPendingTool() below knows how to re-invoke any of them.
   let pendingConfirmation = null;
-  const allSchemas = [
+  let allSchemas = [
     ...GITHUB_TOOL_SCHEMAS, ...FILESYSTEM_TOOL_SCHEMAS, ...PDF_TOOL_SCHEMAS, ...OFFICE_TOOL_SCHEMAS,
-    ...TERMINAL_TOOL_SCHEMAS, ...DEV_PREVIEW_TOOL_SCHEMAS, ...PC_FILESYSTEM_TOOL_SCHEMAS, ...PC_GIT_TOOL_SCHEMAS, ...PHONE_UTILITY_TOOL_SCHEMAS, ...WEB_SEARCH_TOOL_SCHEMAS, ...BACKGROUND_SESSION_TOOL_SCHEMAS, ...DATA_TOOL_SCHEMAS, ...TIME_TOOL_SCHEMAS, ...REMINDER_TOOL_SCHEMAS, ...TODO_TOOL_SCHEMAS,
+    ...TERMINAL_TOOL_SCHEMAS, ...DEV_PREVIEW_TOOL_SCHEMAS, ...PC_FILESYSTEM_TOOL_SCHEMAS, ...PC_GIT_TOOL_SCHEMAS, ...PHONE_UTILITY_TOOL_SCHEMAS, ...WEB_SEARCH_TOOL_SCHEMAS, ...PLUGIN_TOOL_SCHEMAS, ...BACKGROUND_SESSION_TOOL_SCHEMAS, ...DATA_TOOL_SCHEMAS, ...TIME_TOOL_SCHEMAS, ...REMINDER_TOOL_SCHEMAS, ...TODO_TOOL_SCHEMAS,
     // Recursion guard (subagentManager.js header): a subagent never sees
     // its own spawn tool.
     ...(isSubagent ? [] : SUBAGENT_TOOL_SCHEMAS),
@@ -2249,6 +2261,24 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
     // subagent (no conversation of its own) can't meaningfully do.
     ...(isSubagent ? [] : WORKTREE_TOOL_SCHEMAS),
   ];
+
+  // Active plugin via picker or @PluginName mention — append instructions
+  // and shrink the tool allowlist to the plugin's declared tools.
+  {
+    const applied = await applyPluginToRequest({
+      selectedPluginId: context.selectedPluginId || null,
+      userText: userRequest,
+      systemPrompt,
+      tools: allSchemas,
+    });
+    systemPrompt = applied.systemPrompt;
+    allSchemas = applied.tools;
+    if (applied.plugin) {
+      history[0] = { role: 'system', content: systemPrompt };
+      onStep?.(`Using plugin "${applied.plugin.name}"`);
+      stepsCompleted.push(`Using plugin "${applied.plugin.name}"`);
+    }
+  }
 
   for (let i = 0; i < MAX_TOOL_STEPS; i++) {
     const modelResult = await modelClient.sendMessage(history, MODEL_KEYS.OX_ALPHA, {
@@ -2258,7 +2288,7 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
     });
 
     if (!modelResult.success) {
-      return { success: false, answer: null, error: modelResult.error, stepsCompleted, clockData, pendingConfirmation };
+      return { success: false, answer: null, error: modelResult.error, stepsCompleted, clockData, pendingConfirmation, pluginPreview };
     }
 
     const { content, toolCalls } = modelResult.data;
@@ -2276,7 +2306,7 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
       if (executedSteps.length > 0) {
         recordProcedure(userRequest, executedSteps, null).catch((err) => console.error('[ToolOrchestrator] recordProcedure failed:', err));
       }
-      return { success: true, answer: content, error: null, stepsCompleted, clockData, pendingConfirmation };
+      return { success: true, answer: content, error: null, stepsCompleted, clockData, pendingConfirmation, pluginPreview };
     }
 
     // Record the assistant's tool-call turn in history exactly as the API
@@ -2438,6 +2468,9 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
         if (toolName === 'time_get_current') {
           clockData = { timezone: result.data.timezone, label: result.data.resolvedLabel };
         }
+        if ((toolName === 'plugin_create' || toolName === 'plugin_install') && result?.data?.pluginPreview) {
+          pluginPreview = result.data.pluginPreview;
+        }
       }
     }
   }
@@ -2449,6 +2482,7 @@ When generating file content (for pc_fs_scaffold_project, pc_fs_create_file, or 
     stepsCompleted,
     clockData,
     pendingConfirmation,
+    pluginPreview,
   };
 }
 

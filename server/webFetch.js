@@ -30,6 +30,17 @@ const MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5MB cap - a fetched page's raw by
 const MAX_TEXT_CHARS = 15000; // cap on the extracted text handed back - plenty for a model to work with, not a full mirror of the page
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
+function getActiveVpnProxyUrl() {
+  try {
+    const vpn = global.__zaoVpn;
+    if (!vpn?.getActiveProxyConfig) return null;
+    const cfg = vpn.getActiveProxyConfig();
+    if (!cfg?.server) return null;
+    const { proxyUrlFromConfig } = require('./vpn/proxy');
+    return proxyUrlFromConfig(cfg);
+  } catch (_) { return null; }
+}
+
 function decodeEntities(str) {
   return str
     .replace(/&nbsp;/g, ' ')
@@ -103,7 +114,7 @@ async function runFetch(rawUrl) {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(parsedUrl.href, {
+    const fetchOpts = {
       method: 'GET',
       redirect: 'follow',
       headers: {
@@ -111,7 +122,17 @@ async function runFetch(rawUrl) {
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
       signal: controller.signal,
-    });
+    };
+    const proxyUrl = getActiveVpnProxyUrl();
+    let fetchImpl = fetch;
+    if (proxyUrl) {
+      try {
+        const { ProxyAgent, fetch: undiciFetch } = require('undici');
+        fetchImpl = undiciFetch;
+        fetchOpts.dispatcher = new ProxyAgent(proxyUrl);
+      } catch (_) { /* undici optional */ }
+    }
+    const response = await fetchImpl(parsedUrl.href, fetchOpts);
 
     clearTimeout(timer);
 

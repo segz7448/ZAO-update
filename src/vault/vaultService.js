@@ -17,7 +17,7 @@ import { getApiKey, storeApiKey, deleteApiKey } from '../db/database';
 import { scorePassword, findReusedSecrets, isWeakScore } from './strength';
 import { requireVaultUnlock, touchVaultActivity, getVaultLockState } from './vaultAuth';
 
-export const VAULT_ITEM_TYPES = ['login', 'api_key', 'secure_note', 'ssh_key', 'connector_token'];
+export const VAULT_ITEM_TYPES = ['login', 'api_key', 'secure_note', 'ssh_key', 'connector_token', 'authenticator', 'wifi', 'identity'];
 
 const SECRET_PREFIX = 'zao_vault_secret_';
 
@@ -45,7 +45,18 @@ async function ensureVaultTable() {
   `);
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_vault_items_type ON vault_items(type);`);
   await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_vault_items_updated ON vault_items(updated_at);`);
+  await ensureVaultExtraColumns(db);
   return db;
+}
+
+async function ensureVaultExtraColumns(db) {
+  try {
+    const cols = await db.getAllAsync(`PRAGMA table_info(vault_items)`);
+    const names = new Set((cols || []).map((c) => c.name));
+    if (!names.has('pinned')) await db.execAsync(`ALTER TABLE vault_items ADD COLUMN pinned INTEGER DEFAULT 0`);
+    if (!names.has('sort_order')) await db.execAsync(`ALTER TABLE vault_items ADD COLUMN sort_order INTEGER DEFAULT 0`);
+    if (!names.has('issuer')) await db.execAsync(`ALTER TABLE vault_items ADD COLUMN issuer TEXT`);
+  } catch (_) { /* older mocks */ }
 }
 
 function rowToMeta(row) {
@@ -62,6 +73,9 @@ function rowToMeta(row) {
     connectorId: row.connector_id || null,
     managedByConnector: !!row.managed_by_connector,
     hasTotp: !!row.has_totp,
+    pinned: !!row.pinned,
+    sortOrder: row.sort_order || 0,
+    issuer: row.issuer || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -74,6 +88,9 @@ function rowToMeta(row) {
  *  secure_note:     { body }
  *  ssh_key:         { privateKey, publicKey?, passphrase? }
  *  connector_token: { token, scopes?, login?, name?, avatarUrl? }  // managed
+ *  authenticator:   { secret, algorithm?, digits?, period?, counter?, otpType? }
+ *  wifi:            { ssid, password, security? }
+ *  identity:        { fullName?, email?, phone?, address?, notes? }
  */
 async function writeSecret(id, payload) {
   await SecureStore.setItemAsync(secretKey(id), JSON.stringify(payload));
@@ -131,7 +148,7 @@ export async function revealVaultSecret(id, { reason } = {}) {
   return { success: true, data: secret };
 }
 
-export async function createVaultItem({ type, title, website, username, tags, secret, connectorId, managedByConnector, hasTotp }) {
+export async function createVaultItem({ type, title, website, username, tags, secret, connectorId, managedByConnector, hasTotp, issuer, pinned }) {
   if (!VAULT_ITEM_TYPES.includes(type)) return { success: false, error: 'INVALID_TYPE' };
   if (!title || !String(title).trim()) return { success: false, error: 'TITLE_REQUIRED' };
   if (!secret || typeof secret !== 'object') return { success: false, error: 'SECRET_REQUIRED' };
@@ -140,13 +157,15 @@ export async function createVaultItem({ type, title, website, username, tags, se
   const now = Date.now();
   await writeSecret(id, secret);
   const db = await ensureVaultTable();
+  await ensureVaultExtraColumns(db);
   await db.runAsync(
-    `INSERT INTO vault_items (id, type, title, website, username, tags, connector_id, managed_by_connector, has_totp, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO vault_items (id, type, title, website, username, tags, connector_id, managed_by_connector, has_totp, created_at, updated_at, pinned, sort_order, issuer)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, type, String(title).trim(), website || null, username || null,
       JSON.stringify(tags || []), connectorId || null, managedByConnector ? 1 : 0,
-      hasTotp || secret.totpSecret ? 1 : 0, now, now,
+      hasTotp || secret.totpSecret || type === 'authenticator' ? 1 : 0, now, now,
+      pinned ? 1 : 0, 0, issuer || null,
     ]
   );
   return getVaultItemMeta(id);
@@ -299,4 +318,47 @@ export async function getGithubTokenFromVault() {
   return key?.data?.key_value || null;
 }
 
+
+/** Authenticator items only (type=authenticator), pinned first. */
+export async function listAuthenticatorItems({ query } = {}) {
+  const listed = await listVaultItems({ type: 'authenticator', query });
+  const items = (listed.data || []).slice().sort((a, b) => {
+    if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1;
+    return (a.sortOrder || 0) - (b.sortOrder || 0) || (b.updatedAt - a.updatedAt);
+  });
+  return { success: true, data: items };
+}
+
+export async function setVaultItemPinned(id, pinned) {
+  const db = await ensureVaultTable();
+  await ensureVaultExtraColumns(db);
+  await db.runAsync(`UPDATE vault_items SET pinned = ?, updated_at = ? WHERE id = ?`, [pinned ? 1 : 0, Date.now(), id]);
+  return getVaultItemMeta(id);
+}
+
+export async function reorderVaultItems(orderedIds) {
+  const db = await ensureVaultTable();
+  await ensureVaultExtraColumns(db);
+  const now = Date.now();
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    await db.runAsync(`UPDATE vault_items SET sort_order = ?, updated_at = ? WHERE id = ?`, [i, now, orderedIds[i]]);
+  }
+  return { success: true };
+}
+
+export async function bumpAuthenticatorCounter(id) {
+  const meta = await getVaultItemMeta(id);
+  if (!meta.data || meta.data.type !== 'authenticator') return { success: false, error: 'NOT_FOUND' };
+  const auth = await requireVaultUnlock({ reason: 'Advance HOTP counter' });
+  if (!auth.success) return { success: false, error: auth.error || 'locked' };
+  const secret = await readSecret(id);
+  if (!secret || secret.otpType !== 'hotp') return { success: false, error: 'NOT_HOTP' };
+  secret.counter = (Number(secret.counter) || 0) + 1;
+  await writeSecret(id, secret);
+  const db = await ensureVaultTable();
+  await db.runAsync(`UPDATE vault_items SET updated_at = ? WHERE id = ?`, [Date.now(), id]);
+  return { success: true, data: { counter: secret.counter } };
+}
+
 export { getApiKey, storeApiKey, deleteApiKey };
+

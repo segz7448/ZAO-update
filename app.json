@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "associatedDomains": []
     },
     "android": {
       "package": "com.zenas.zao",
@@ -25,7 +26,23 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "zao",
+              "host": "plugin",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -62,10 +79,19 @@
         {
           "faceIDPermission": "ZAO uses Face ID to unlock your Vault and reveal secrets."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ZAO needs camera access to scan authenticator QR codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "extra": {
       "githubOAuthClientId": ""
-    }
+    },
+    "scheme": "zao"
   }
 }

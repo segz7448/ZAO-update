@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Alert, Linking,
+  SectionList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassSheet, GlassCard, StatusPill } from '../../ui/GlassSheet';
 import { AppIconTile } from '../../ui/icons';
 import { haptic } from '../../ui/ios';
 import {
-  CONNECTORS, CONNECTOR_CATEGORIES, searchConnectors, connectorById,
+  CONNECTORS, CONNECTOR_CATEGORIES, FEATURED_CONNECTOR_IDS, searchConnectors, connectorById,
 } from '../../connectors/registry';
 import {
   getGithubConnectionStatus,
@@ -306,61 +307,92 @@ export function ConnectorsHub({ visible, onClose, theme }) {
     if (visible) refreshGithub();
   }, [visible]);
 
+  const githubConnected = !!githubStatus?.configured;
+  const isConnected = (c) => c.id === 'github' && githubConnected;
+
   const list = useMemo(() => {
     let items = searchConnectors(query);
     if (category !== 'all') items = items.filter((c) => c.category === category);
     return items;
   }, [query, category]);
 
-  const grouped = useMemo(() => {
-    const map = {};
-    for (const c of list) {
-      if (!map[c.category]) map[c.category] = [];
-      map[c.category].push(c);
+  const sections = useMemo(() => {
+    const featuredSet = new Set(FEATURED_CONNECTOR_IDS);
+    const connected = list.filter(isConnected);
+    const featured = list.filter((c) => (c.featured || featuredSet.has(c.id)) && !isConnected(c));
+    const available = list.filter((c) => !isConnected(c) && !(c.featured || featuredSet.has(c.id)));
+    const out = [];
+    if (connected.length) out.push({ title: 'Connected', data: connected });
+    if (featured.length && !query && category === 'all') out.push({ title: 'Featured', data: featured });
+    // When filtering/searching, fold Featured into Available to avoid empty buckets.
+    const availData = (query || category !== 'all')
+      ? list.filter((c) => !isConnected(c))
+      : available;
+    if (availData.length) {
+      // Prefer category grouping when browsing All without search.
+      if (!query && category === 'all') {
+        out.push({ title: 'Available', data: availData });
+      } else if (category !== 'all') {
+        const cat = CONNECTOR_CATEGORIES.find((c) => c.id === category);
+        out.push({ title: cat?.label || 'Available', data: availData });
+      } else {
+        out.push({ title: 'Results', data: availData });
+      }
     }
-    return map;
-  }, [list]);
+    return out;
+  }, [list, query, category, githubConnected]);
 
   const selected = selectedId ? connectorById(selectedId) : null;
-  const githubConnected = !!githubStatus?.configured;
+
+  const header = (
+    <View>
+      <View style={[styles.searchWrap, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+        <Ionicons name="search" size={18} color={theme.textTertiary} />
+        <TextInput
+          style={[styles.searchInput, { color: theme.textPrimary }]}
+          placeholder="Search connectors"
+          placeholderTextColor={theme.textTertiary}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+        />
+      </View>
+      <CategoryChips theme={theme} active={category} onChange={setCategory} />
+    </View>
+  );
 
   return (
     <>
-      <GlassSheet visible={visible && !selected} onClose={onClose} title="Connectors">
-        <View style={[styles.searchWrap, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
-          <Ionicons name="search" size={18} color={theme.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Search connectors"
-            placeholderTextColor={theme.textTertiary}
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-          />
-        </View>
-        <CategoryChips theme={theme} active={category} onChange={setCategory} />
-
-        {Object.keys(grouped).length === 0 ? (
-          <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40 }}>No connectors match.</Text>
-        ) : (
-          CONNECTOR_CATEGORIES.filter((c) => grouped[c.id]).map((cat) => (
-            <View key={cat.id}>
-              <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{cat.label}</Text>
-              <View style={{ gap: 10 }}>
-                {grouped[cat.id].map((connector) => (
-                  <GlassCard key={connector.id} theme={theme} radius={16} style={{ padding: 10 }}>
-                    <ConnectorRow
-                      theme={theme}
-                      connector={connector}
-                      connected={connector.id === 'github' && githubConnected}
-                      onPress={(c) => setSelectedId(c.id)}
-                    />
-                  </GlassCard>
-                ))}
-              </View>
+      <GlassSheet visible={visible && !selected} onClose={onClose} title="Connectors" scroll={false}>
+        <SectionList
+          style={{ flex: 1 }}
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          stickySectionHeadersEnabled={false}
+          ListHeaderComponent={header}
+          contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 4 }}
+          ListEmptyComponent={
+            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40 }}>No connectors match.</Text>
+          }
+          renderSectionHeader={({ section }) => (
+            <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{section.title}</Text>
+          )}
+          renderItem={({ item: connector }) => (
+            <View style={{ marginBottom: 10 }}>
+              <GlassCard theme={theme} radius={16} style={{ padding: 10 }}>
+                <ConnectorRow
+                  theme={theme}
+                  connector={connector}
+                  connected={isConnected(connector)}
+                  onPress={(c) => setSelectedId(c.id)}
+                />
+              </GlassCard>
             </View>
-          ))
-        )}
+          )}
+          initialNumToRender={12}
+          windowSize={8}
+          maxToRenderPerBatch={10}
+        />
       </GlassSheet>
 
       <GlassSheet

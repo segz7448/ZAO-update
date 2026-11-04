@@ -192,6 +192,7 @@ function buildAssistantMessageFromResult(result, conversationId) {
     // reachable for a subagent's own confirmable call, not for an
     // ordinary top-level message.
     pending_confirmation: result.data.pendingConfirmation ? JSON.stringify(result.data.pendingConfirmation) : null,
+    plugin_preview: result.data.pluginPreview ? JSON.stringify(result.data.pluginPreview) : null,
   };
 }
 

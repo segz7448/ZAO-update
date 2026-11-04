@@ -27,7 +27,7 @@ import { normalizeActionGuess, translatePcLogDecisionArgs } from '../planExecuto
 
 describe('normalizeActionGuess - known domains resolve to their real tool', () => {
   test.each([
-    ['files', 'fs_create_file'],
+    ['files', 'pc_fs_create_file'],
     ['github', 'github_commit_files'],
     ['terminal', 'terminal_pc_run_command'],
     ['time', 'time_get_current'],

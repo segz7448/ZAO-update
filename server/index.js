@@ -68,6 +68,9 @@ const { registerPcGitRoute } = require('./pcGit');
 const { registerBrowserAgentStream } = require('./browserStream');
 const { shutdownBrowser } = require('./browserAgent');
 const { registerDevPreviewRoute, shutdownAllPreviewServers } = require('./devPreview');
+const { registerVpnRoutes } = require('./vpn/routes');
+const { registerPluginShareRoutes } = require('./plugins/routes');
+const path = require('path');
 
 const app = express();
 app.use(express.json({ limit: `${config.MAX_JSON_BODY_MB}mb` }));
@@ -89,8 +92,10 @@ app.use((req, res, next) => {
 // Required since this server is bound to 0.0.0.0 and reachable over the
 // public internet at the VM's IP, not just loopback.
 // ---------------------------------------------------------------------------
+// Public plugin share pages (/p/:token) are unguessable-token gated — no Bearer.
 app.use((req, res, next) => {
   if (req.path === '/health') return next();
+  if (req.path.startsWith('/p/')) return next();
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token || token !== config.AUTH_TOKEN) {
@@ -509,6 +514,17 @@ registerProcessRoutes(app, config, log);
 registerOcrRoute(app, config, log);
 registerWebSearchRoute(app, config, log);
 registerWebFetchRoute(app, config, log);
+
+// VPN store — dedicated proxy IPs for agent traffic (demo provider by default)
+const vpnApi = registerVpnRoutes(app, { dataDir: path.join(__dirname, 'data'), authMiddleware: null });
+app.locals.vpn = vpnApi;
+global.__zaoVpn = vpnApi;
+
+const pluginShareApi = registerPluginShareRoutes(app, { dataDir: path.join(__dirname, 'data') });
+app.locals.pluginShares = pluginShareApi;
+// Public share page + JSON (auth-exempt via /p/ prefix)
+app.get('/p/:token', pluginShareApi.publicHandlers.page);
+app.get('/p/:token/json', pluginShareApi.publicHandlers.json);
 registerDataRoute(app, config, log);
 registerPcFilesRoute(app, config, log);
 registerPcZipRoute(app, config, log);

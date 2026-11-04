@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, StatusBar, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import * as Linking from 'expo-linking';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ChatScreen from './src/screens/ChatScreen';
@@ -20,6 +21,7 @@ import { usePlanStore } from './src/store/planStore';
 import { useThemeStore } from './src/store/themeStore';
 import { AmbientBackground } from './src/ui/ios';
 import { useTheme, useResolvedThemeMode } from './src/theme/useTheme';
+import { SharedPluginInstallSheet } from './src/components/settings/SharedPluginInstallSheet';
 
 function AppShell() {
   const theme = useTheme();
@@ -27,6 +29,43 @@ function AppShell() {
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState(null);
   const [screen, setScreen] = useState('chat'); // 'chat' | 'settings' | 'browser' | 'plan'
+  const [pendingShareToken, setPendingShareToken] = useState(null);
+
+  // Deep links: zao://plugin/<token> and https://<host>/p/<token>
+  useEffect(() => {
+    const parse = (url) => {
+      if (!url) return null;
+      try {
+        const parsed = Linking.parse(url);
+        const path = `${parsed.path || ''}`.replace(/^\/+/, '');
+        if (parsed.scheme === 'zao' && (parsed.hostname === 'plugin' || path.startsWith('plugin/'))) {
+          const token = parsed.hostname === 'plugin'
+            ? (path || parsed.queryParams?.token || '')
+            : path.replace(/^plugin\//, '');
+          return token || null;
+        }
+        if (path.startsWith('p/')) return path.slice(2).split('/')[0] || null;
+        if (parsed.path && String(parsed.path).includes('/p/')) {
+          const i = String(parsed.path).indexOf('/p/');
+          return String(parsed.path).slice(i + 3).split('/')[0] || null;
+        }
+      } catch (_) { /* ignore */ }
+      // Fallback regex
+      const m = String(url).match(/(?:zao:\/\/plugin\/|\/p\/)([A-Za-z0-9_\-]+)/);
+      return m ? m[1] : null;
+    };
+    const handle = ({ url }) => {
+      const token = parse(url);
+      if (token) setPendingShareToken(token);
+    };
+    Linking.getInitialURL().then((url) => {
+      const token = parse(url);
+      if (token) setPendingShareToken(token);
+    }).catch(() => {});
+    const sub = Linking.addEventListener('url', handle);
+    return () => sub?.remove?.();
+  }, []);
+
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   // Which plan PlanScreen.js is currently showing - set when a chat reply
@@ -336,7 +375,7 @@ function AppShell() {
             />
           )}
           {screen === 'settings' && (
-            <SettingsScreen onOpenSidebar={() => setSidebarVisible(true)} />
+            <SettingsScreen onOpenSidebar={() => setSidebarVisible(true)} onGoChat={() => setScreen('chat')} />
           )}
           {screen === 'plan' && (
             <PlanScreen
@@ -384,6 +423,14 @@ function AppShell() {
         onNewChat={handleNewChat}
         onOpenSettings={handleOpenSettings}
         onDeleteConversation={handleDeleteConversation}
+      />
+
+      <SharedPluginInstallSheet
+        visible={!!pendingShareToken}
+        token={pendingShareToken}
+        theme={theme}
+        onClose={() => setPendingShareToken(null)}
+        onInstalled={() => setPendingShareToken(null)}
       />
     </>
   );

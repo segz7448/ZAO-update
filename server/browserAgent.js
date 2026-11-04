@@ -141,11 +141,35 @@ function extractInteractiveElementsInPage() {
 
 let browserInstance = null;
 
+function getActiveVpnProxy() {
+  try {
+    const vpn = global.__zaoVpn || null;
+    if (vpn && typeof vpn.getActiveProxyConfig === 'function') {
+      return vpn.getActiveProxyConfig();
+    }
+  } catch (_) { /* optional */ }
+  return null;
+}
+
 async function getBrowser() {
   if (!browserInstance) {
     browserInstance = await chromium.launch({ headless: true });
   }
   return browserInstance;
+}
+
+/** Build a new BrowserContext, routing through the active VPN when set. */
+async function newProxiedContext(browser, extra = {}) {
+  const proxy = getActiveVpnProxy();
+  const opts = { ...extra };
+  if (proxy?.server) {
+    opts.proxy = {
+      server: proxy.server,
+      username: proxy.username,
+      password: proxy.password,
+    };
+  }
+  return browser.newContext(opts);
 }
 
 /**
@@ -176,7 +200,7 @@ class AgentSession {
   async _ensureContext() {
     if (this.context) return;
     const browser = await getBrowser();
-    this.context = await browser.newContext({ viewport: { width: 412, height: 915 } }); // phone-ish aspect ratio, matches what's actually being displayed
+    this.context = await newProxiedContext(browser, { viewport: { width: 412, height: 915 } }); // phone-ish aspect ratio, matches what's actually being displayed
     await this._newTab('about:blank');
   }
 

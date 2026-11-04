@@ -1120,6 +1120,14 @@ export async function initDatabase() {
       // Expected on any install that already has this column - not an error.
     }
 
+    // Migration: plugin_preview — inline glass Plugin preview card from
+    // plugin_create / plugin_install tool results (PluginPreviewCard.js).
+    try {
+      await db.execAsync(`ALTER TABLE messages ADD COLUMN plugin_preview TEXT;`);
+    } catch (migrationErr) {
+      // Expected on any install that already has this column - not an error.
+    }
+
     // Migration: rolling_summary / rolling_summary_covers_at added for
     // working-memory context-window compaction (see
     // src/services/memory/workingMemory.js). A long conversation can't
@@ -1331,6 +1339,7 @@ export async function addMessage(message) {
       clock_data = null,
       pending_confirmation = null,
       artifacts = null,
+      plugin_preview = null,
     } = message;
     const now = Date.now();
     // reasoning_trace can arrive as an object (chainOfThought.js's plain
@@ -1352,12 +1361,15 @@ export async function addMessage(message) {
     const artifacts_json = artifacts != null
       ? (typeof artifacts === 'string' ? artifacts : JSON.stringify(artifacts))
       : null;
+    const plugin_preview_json = plugin_preview != null
+      ? (typeof plugin_preview === 'string' ? plugin_preview : JSON.stringify(plugin_preview))
+      : null;
 
     await db.runAsync(
       `INSERT INTO messages
-        (id, conversation_id, role, content, provider, model, model_family, token_count, created_at, is_error, local_image_path, local_attachment_path, attachment_kind, attachment_name, plan_id, reasoning_type, reasoning_trace, clock_data, pending_confirmation, artifacts)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, conversation_id, role, content, provider, model, model_family, token_count, now, is_error ? 1 : 0, local_image_path, local_attachment_path, attachment_kind, attachment_name, plan_id, reasoning_type, reasoning_trace_json, clock_data, pending_confirmation_json, artifacts_json]
+        (id, conversation_id, role, content, provider, model, model_family, token_count, created_at, is_error, local_image_path, local_attachment_path, attachment_kind, attachment_name, plan_id, reasoning_type, reasoning_trace, clock_data, pending_confirmation, artifacts, plugin_preview)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, conversation_id, role, content, provider, model, model_family, token_count, now, is_error ? 1 : 0, local_image_path, local_attachment_path, attachment_kind, attachment_name, plan_id, reasoning_type, reasoning_trace_json, clock_data, pending_confirmation_json, artifacts_json, plugin_preview_json]
     );
 
     await db.runAsync(
