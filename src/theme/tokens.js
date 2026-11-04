@@ -1,7 +1,8 @@
 /**
- * ZAO — Theme Tokens (iOS 18 HIG edition of the Muse×Grok blend)
- * Light: iOS system colors, iMessage-style bubbles, grouped backgrounds.
- * Dark: true-black canvas, plain-text assistant (Grok identity kept).
+ * ZAO — Theme Tokens (v2: Grok Bot iOS primary, Muse iOS + xAI Grok iOS secondary)
+ * Light: Grok Bot #F7F7F7 canvas, white 16pt cards, black user / #F1F2F1 bot bubbles.
+ * Dark: Muse #0A0A0A canvas, #272727 sheets, #474747 sheet cards; Grok plain-text assistant.
+ * See /workspace/zao-ios-v2-notes.md for the source of every value.
  */
 
 import { Platform } from 'react-native';
@@ -18,8 +19,8 @@ export const spacing = {
 
 export const radii = {
   sm: 8, md: 10, lg: 13, xl: 18,
-  bubble: 18, card: 10, grouped: 10, tile: 7,
-  composer: 22, pill: 999, chrome: 18, sheet: 14,
+  bubble: 18, card: 16, grouped: 16, tile: 7,
+  composer: 22, pill: 999, chrome: 22, sheet: 14,
 };
 
 export const fontFamily = Platform.select({
@@ -49,6 +50,18 @@ export const tileColors = {
   gray: '#8E8E93', yellow: '#FFCC00',
 };
 
+/** Grok Bot layout metrics (01-bot-profile, measured @3x) */
+export const layout = {
+  circleButton: 44,   // back / share / more white circles
+  cardInset: 24,      // 24pt side inset -> 345pt card on a 393pt phone
+  rowHeight: 50,
+  rowIconColumn: 56,  // divider inset to text column
+  listAvatar: 40,     // home/sidebar list avatars
+};
+
+/** Muse Allow gradient (appstore-02, measured) */
+export const allowGradient = ['#0762D5', '#155FDA', '#3159DF', '#4156E5'];
+
 export const springs = {
   drawer: { damping: 26, stiffness: 260, mass: 1 },
   sheet: { damping: 24, stiffness: 240, mass: 1 },
@@ -57,112 +70,126 @@ export const springs = {
 
 export const lightTheme = {
   mode: 'light',
-  background: '#FFFFFF',
-  groupedBackground: '#F2F2F7',
+  background: '#FCFCFC',          // Grok Bot home/chat
+  groupedBackground: '#F7F7F7',   // Grok Bot profile canvas
   surface: '#FFFFFF',
-  surfaceAlt: '#F2F2F7',
-  secondarySystemBackground: '#F2F2F7',
+  surfaceAlt: '#F7F7F7',
+  secondarySystemBackground: '#F7F7F7',
   tertiarySystemBackground: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
   composer: '#FFFFFF',
-  composerBorder: 'rgba(60,60,67,0.18)',
-  border: 'rgba(60,60,67,0.29)',
-  separator: 'rgba(60,60,67,0.29)',
-  borderStrong: '#C6C6C8',
-  fill: 'rgba(120,120,128,0.12)',
-  barTint: 'rgba(249,249,249,0.82)',
+  composerBorder: 'rgba(0,0,0,0.06)',
+  border: '#EDEDED',
+  separator: '#F3F3F3',           // Grok Bot row divider
+  borderStrong: '#E7E7E8',
+  fill: '#EFEFF0',
+  barTint: 'rgba(252,252,252,0.86)',
   blurTint: 'light',
 
   textPrimary: '#000000',
-  textSecondary: 'rgba(60,60,67,0.6)',
-  textTertiary: 'rgba(60,60,67,0.3)',
+  textSecondary: '#8A8A8D',       // Grok Bot value/icon gray
+  textTertiary: '#BEBEC0',        // Grok Bot helper text
   textInverse: '#FFFFFF',
+  chevron: '#A7A7AA',
+  timestamp: '#BABABA',
+  icon: '#8A8A8D',
 
-  accent: '#007AFF',
-  accentSoft: 'rgba(0,122,255,0.1)',
-  brand: '#007AFF',
-  brandStrong: '#007AFF',
-  deny: 'rgba(120,120,128,0.12)',
-  chromeButton: 'rgba(120,120,128,0.12)',
+  accent: '#0762D5',              // Muse Allow start
+  accentSoft: 'rgba(7,98,213,0.10)',
+  brand: '#0762D5',
+  brandStrong: '#0762D5',
+  deny: '#F3F4F6',                // Muse Deny
+  denyText: '#111111',
+  chromeButton: '#FFFFFF',        // 44pt white circles
+  chromeIcon: '#000000',
+  pill: '#E7E7E8',                // Grok Bot Edit pill
+  headerPill: '#FFFFFF',
 
-  bubbleUser: '#007AFF',
-  bubbleAssistant: '#E9E9EB',
+  bubbleUser: '#0B0B0B',          // Grok Bot user bubble
+  bubbleAssistant: '#F1F2F1',     // Grok Bot bot bubble
   bubbleUserText: '#FFFFFF',
   bubbleAssistantText: '#000000',
   assistantUsesBubble: true,
 
-  speak: '#007AFF',
+  speak: '#0B0B0B',
   speakText: '#FFFFFF',
-  sendDisabled: '#C7C7CC',
-  citationCard: '#FFFFFF',
-  chipBlue: 'rgba(0,122,255,0.1)',
-  chipGrey: '#F2F2F7',
+  sendDisabled: '#D9D9DB',
+  citationCard: '#F1F2F1',
+  chipBlue: 'rgba(7,98,213,0.10)',
+  chipGrey: '#F1F2F1',
   modeSelected: '#FFFFFF',
-  modeTrack: 'rgba(118,118,128,0.12)',
-  switchTrack: '#34C759',
+  modeTrack: '#EFEFF0',
+  switchTrack: '#0762D5',         // custom tint (Grok Bot tints, not iOS green)
 
-  success: '#34C759',
-  warning: '#FF9500',
-  danger: '#FF3B30',
-  dangerSoft: 'rgba(255,59,48,0.1)',
-  dangerBorder: 'rgba(255,59,48,0.3)',
-  dangerText: '#FF3B30',
+  success: '#1FA855',
+  warning: '#E08600',
+  danger: '#E5484D',
+  dangerSoft: 'rgba(229,72,77,0.10)',
+  dangerBorder: 'rgba(229,72,77,0.30)',
+  dangerText: '#D93036',
 
-  info: '#007AFF',
-  infoSoft: 'rgba(0,122,255,0.1)',
+  info: '#0762D5',
+  infoSoft: 'rgba(7,98,213,0.10)',
 
-  overlay: 'rgba(0,0,0,0.4)',
+  overlay: 'rgba(0,0,0,0.30)',
   statusBarStyle: 'dark-content',
 
-  spacing, radii, typography, fontFamily, tileColors,
+  spacing, radii, typography, fontFamily, tileColors, layout,
 };
 
 export const darkTheme = {
   mode: 'dark',
-  background: '#000000',
-  groupedBackground: '#000000',
-  surface: '#1C1C1E',
-  surfaceAlt: '#2C2C2E',
-  secondarySystemBackground: '#1C1C1E',
-  tertiarySystemBackground: '#2C2C2E',
-  surfaceElevated: '#1C1C1E',
-  composer: '#1C1C1E',
-  composerBorder: 'rgba(84,84,88,0.65)',
-  border: 'rgba(84,84,88,0.65)',
-  separator: 'rgba(84,84,88,0.65)',
-  borderStrong: '#38383A',
-  fill: 'rgba(120,120,128,0.24)',
-  barTint: 'rgba(22,22,24,0.82)',
+  background: '#0A0A0A',          // Muse dark canvas
+  groupedBackground: '#0A0A0A',
+  surface: '#1C1C1C',
+  surfaceAlt: '#272727',
+  secondarySystemBackground: '#272727', // Muse sheet
+  tertiarySystemBackground: '#474747',  // Muse sheet card
+  surfaceElevated: '#272727',
+  composer: '#1A1A1A',            // Grok composer fill
+  composerBorder: 'rgba(255,255,255,0.06)',
+  border: '#2A2A2A',
+  separator: 'rgba(255,255,255,0.08)',
+  borderStrong: '#3C3B3B',
+  fill: '#262626',
+  barTint: 'rgba(10,10,10,0.86)',
   blurTint: 'dark',
 
   textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(235,235,245,0.6)',
-  textTertiary: 'rgba(235,235,245,0.3)',
+  textSecondary: '#9A9A9E',
+  textTertiary: '#6A6A6E',
   textInverse: '#000000',
+  chevron: '#6A6A6E',
+  timestamp: '#6A6A6E',
+  icon: '#B0B0B4',
 
-  accent: '#0A84FF',
-  accentSoft: 'rgba(10,132,255,0.18)',
-  brand: '#0A84FF',
-  brandStrong: '#0A84FF',
-  deny: 'rgba(120,120,128,0.24)',
-  chromeButton: 'rgba(120,120,128,0.24)',
+  accent: '#2B88D3',              // Muse dark link blue
+  accentSoft: 'rgba(43,136,211,0.18)',
+  brand: '#2B88D3',
+  brandStrong: '#2B88D3',
+  deny: '#2D2D2D',
+  denyText: '#FFFFFF',
+  chromeButton: '#1C1C1C',
+  chromeIcon: '#FFFFFF',
+  pill: '#2D2D2D',                // Grok Ask pill
+  headerPill: '#1C1C1C',
 
-  bubbleUser: '#0A84FF',
+  bubbleUser: '#262626',          // Grok dark user bubble
   bubbleAssistant: 'transparent',
   bubbleUserText: '#FFFFFF',
   bubbleAssistantText: '#FFFFFF',
-  /** Dark mode keeps the plain-text assistant identity */
+  /** Grok dark: assistant replies as plain text */
   assistantUsesBubble: false,
 
-  speak: '#0A84FF',
-  speakText: '#FFFFFF',
+  speak: '#FFFFFF',               // Grok Speak/send: white in dark
+  speakText: '#000000',
   sendDisabled: '#3A3A3C',
-  citationCard: '#1C1C1E',
-  chipBlue: 'rgba(10,132,255,0.18)',
-  chipGrey: '#1C1C1E',
-  modeSelected: '#636366',
-  modeTrack: 'rgba(118,118,128,0.24)',
-  switchTrack: '#30D158',
+  citationCard: '#1C1C1C',
+  chipBlue: 'rgba(43,136,211,0.18)',
+  chipGrey: '#1C1C1C',
+  modeSelected: '#3A3A3A',
+  modeTrack: '#1A1A1A',
+  switchTrack: '#2B88D3',
 
   success: '#30D158',
   warning: '#FF9F0A',
@@ -171,13 +198,13 @@ export const darkTheme = {
   dangerBorder: 'rgba(255,69,58,0.35)',
   dangerText: '#FF453A',
 
-  info: '#0A84FF',
-  infoSoft: 'rgba(10,132,255,0.18)',
+  info: '#23C8FF',                // Muse progress
+  infoSoft: 'rgba(35,200,255,0.15)',
 
-  overlay: 'rgba(0,0,0,0.6)',
+  overlay: 'rgba(0,0,0,0.60)',
   statusBarStyle: 'light-content',
 
-  spacing, radii, typography, fontFamily, tileColors,
+  spacing, radii, typography, fontFamily, tileColors, layout,
 };
 
 export function getTheme(mode) {

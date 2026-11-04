@@ -17,7 +17,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FrostedBar, haptic } from '../ui/ios';
+import { FrostedBar, CircleButton, haptic } from '../ui/ios';
 import { usePlanStore } from '../store/planStore';
 import { useTheme } from '../theme/useTheme';
 import StepDetailSheet from './StepDetailSheet';
@@ -115,16 +115,20 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
   return (
     <View style={[styles.container, { backgroundColor: theme.groupedBackground }]}>
       <FrostedBar theme={theme} style={[styles.header, { borderBottomColor: theme.separator }]}>
-        <TouchableOpacity onPress={() => { haptic.light(); onClose?.(); }} hitSlop={8} style={styles.backBtn} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={26} color={theme.brand} />
-          <Text style={[styles.backText, { color: theme.brand }]}>Chat</Text>
-        </TouchableOpacity>
+        <View style={styles.backBtn}>
+          <CircleButton theme={theme} icon="chevron-back" label="Back to chat" onPress={onClose} />
+        </View>
         <Animated.Text style={[styles.inlineTitle, { color: theme.textPrimary, opacity: inlineTitleOpacity }]} numberOfLines={1}>
           {goal}
         </Animated.Text>
         <View style={styles.headerRight}>
           {(status === 'running' || status === 'awaiting_approval' || status === 'paused' || status === 'recovering') && (
-            <TouchableOpacity onPress={() => { haptic.warning(); onCancelPlan?.(activePlan.id); }} hitSlop={8}>
+            <TouchableOpacity
+              onPress={() => { haptic.warning(); onCancelPlan?.(activePlan.id); }}
+              hitSlop={8}
+              style={[styles.stopPill, { backgroundColor: theme.chromeButton, shadowOpacity: theme.mode === 'dark' ? 0 : 0.08 }]}
+            >
+              <Ionicons name="stop-circle-outline" size={18} color={theme.danger} />
               <Text style={[styles.cancelText, { color: theme.danger }]}>Stop</Text>
             </TouchableOpacity>
           )}
@@ -351,20 +355,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    minHeight: 44,
+    paddingHorizontal: 16,
+    minHeight: 56,
     paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stopPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingHorizontal: 14, borderRadius: 22,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowRadius: 10, elevation: 2,
   },
   headerTextWrap: { paddingHorizontal: 2, paddingBottom: 14 },
   headerGoal: { fontSize: 34, fontWeight: '700', letterSpacing: 0.37, lineHeight: 41 },
   headerStatus: { fontSize: 15, marginTop: 4, letterSpacing: -0.24 },
-  cancelText: { fontSize: 17, fontWeight: '400', letterSpacing: -0.41 },
+  cancelText: { fontSize: 16, fontWeight: '600', letterSpacing: -0.3 },
   backBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: -8, minWidth: 80 },
   backText: { fontSize: 17, letterSpacing: -0.41 },
   inlineTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', letterSpacing: -0.41 },
   headerRight: { minWidth: 80, alignItems: 'flex-end' },
-  list: { padding: 16, paddingBottom: 40 },
+  list: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 40 },
   milestoneStrip: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: 10,

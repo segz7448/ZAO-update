@@ -33,9 +33,9 @@ function ActionRow({ icon, color, label, onPress, theme, last }) {
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <IconTile name={icon} color={color} />
+      <IconTile name={icon} theme={theme} size={24} />
       <Text style={[styles.actionLabel, { color: theme.textPrimary }]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={17} color={theme.textTertiary} />
+      <Ionicons name="chevron-forward" size={18} color={theme.chevron} />
       {!last && <View style={[styles.rowSep, { backgroundColor: theme.separator }]} />}
     </TouchableOpacity>
   );
@@ -44,7 +44,7 @@ function ActionRow({ icon, color, label, onPress, theme, last }) {
 function ToggleRow({ icon, color, label, value, onValueChange, theme, disabled = false, subtitle = null, last }) {
   return (
     <View style={[styles.actionRow, disabled && { opacity: 0.5 }]}>
-      <IconTile name={icon} color={color} />
+      <IconTile name={icon} theme={theme} size={24} />
       <View style={{ flex: 1 }}>
         <Text style={[styles.actionLabel, { color: theme.textPrimary, flex: 0 }]}>{label}</Text>
         {subtitle && (
@@ -77,21 +77,23 @@ export default function AttachmentSheet({
 }) {
   const theme = useTheme();
 
+  // v2: light = Grok Bot #F7F7F7 canvas + white 16pt cards; dark = Muse #272727 sheet + #474747 cards.
   const groupBg = theme.mode === 'dark' ? theme.tertiarySystemBackground : theme.surface;
+  const sheetBg = theme.mode === 'dark' ? 'rgba(39,39,39,0.97)' : 'rgba(247,247,247,0.97)';
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={[styles.backdrop, { backgroundColor: theme.overlay }]} onPress={onClose} />
-      <FrostedBar theme={theme} intensity={90} style={[styles.sheet, { backgroundColor: theme.mode === 'dark' ? 'rgba(28,28,30,0.94)' : 'rgba(242,242,247,0.94)' }]}>
+      <FrostedBar theme={theme} intensity={90} style={[styles.sheet, { backgroundColor: sheetBg }]}>
         <Grabber theme={theme} />
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.textPrimary }]}>Add to Chat</Text>
           <TouchableOpacity
             onPress={onClose}
             hitSlop={12}
-            style={[styles.closeBtn, { backgroundColor: theme.fill }]}
+            style={[styles.closeBtn, { backgroundColor: theme.mode === 'dark' ? '#474747' : '#FFFFFF' }]}
             accessibilityLabel="Close"
           >
-            <Ionicons name="close" size={16} color={theme.textSecondary} />
+            <Ionicons name="close" size={18} color={theme.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -101,7 +103,7 @@ export default function AttachmentSheet({
           <ActionRow icon="document" color={theme.tileColors.orange} label="Files" onPress={onFiles} theme={theme} last />
         </View>
 
-        <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>TOOLS</Text>
+        <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>Tools</Text>
         <View style={[styles.group, { backgroundColor: groupBg }]}>
           <ToggleRow
             icon="globe"
@@ -132,19 +134,19 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1 },
   sheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    borderTopLeftRadius: 14, borderTopRightRadius: 14,
-    paddingHorizontal: 16, paddingBottom: 34, overflow: 'hidden',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 24, paddingBottom: 34, overflow: 'hidden',
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 14, marginTop: 4,
   },
-  title: { fontSize: 17, fontWeight: '600', letterSpacing: -0.41 },
-  closeBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  group: { borderRadius: 10, overflow: 'hidden' },
-  groupLabel: { fontSize: 13, letterSpacing: -0.08, marginTop: 22, marginBottom: 7, marginLeft: 16 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, paddingHorizontal: 14, paddingVertical: 8 },
+  title: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  group: { borderRadius: 16, overflow: 'hidden' },
+  groupLabel: { fontSize: 13, fontWeight: '500', letterSpacing: -0.08, marginTop: 22, marginBottom: 7, marginLeft: 16 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 50, paddingHorizontal: 16, paddingVertical: 8 },
   actionLabel: { flex: 1, fontSize: 17, letterSpacing: -0.41 },
-  rowSep: { position: 'absolute', left: 55, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  rowSep: { position: 'absolute', left: 54, right: 0, bottom: 0, height: 1 },
   toggleSubtitle: { fontSize: 13, marginTop: 1, letterSpacing: -0.08 },
 });

@@ -27,25 +27,52 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { haptic } from '../ui/ios';
+import { haptic, CircleButton } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
 
+// Grok Bot home-list palette (07): each row gets a colored 40pt avatar.
+const ROW_COLORS = ['#1084FE', '#00C972', '#0B0B0B', '#14B8A6', '#8B5E3C', '#FF8A00', '#FF5A5F', '#E83E8C', '#8A8A8D'];
+
+function colorFor(id = '', mode = 'light') {
+  let h = 0;
+  const key = String(id);
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const c = ROW_COLORS[h % ROW_COLORS.length];
+  return mode === 'dark' && c === '#0B0B0B' ? '#3A3A3C' : c;
+}
+
+function formatWhen(ts) {
+  if (!ts) return '';
+  const d = new Date(typeof ts === 'number' ? ts : String(ts).replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 86400000);
+  if (days <= 0) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return d.toLocaleDateString([], { weekday: 'long' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
 function ConversationRow({ conversation, isActive, onPress, onLongPress, theme }) {
+  const title = conversation.title || 'New Conversation';
   return (
     <TouchableOpacity
-      style={[styles.convoRow, isActive && { backgroundColor: theme.accentSoft }]}
+      style={[styles.convoRow, isActive && { backgroundColor: theme.mode === 'dark' ? '#1C1C1C' : '#FFFFFF' }]}
       onPress={() => onPress(conversation.id)}
       onLongPress={() => onLongPress?.(conversation)}
     >
-      <Text
-        style={[styles.convoTitle, { color: theme.textPrimary }]}
-        numberOfLines={1}
-      >
-        {conversation.title || 'New Conversation'}
-      </Text>
+      <View style={[styles.rowAvatar, { backgroundColor: colorFor(conversation.id, theme.mode) }]}>
+        <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.convoTitle, { color: theme.textPrimary }]} numberOfLines={1}>{title}</Text>
+          <Text style={[styles.convoTime, { color: theme.timestamp }]}>{formatWhen(conversation.updated_at)}</Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -121,24 +148,26 @@ export default function SidebarDrawer({
       <Animated.View
         style={[
           styles.drawer,
-          { backgroundColor: theme.mode === 'dark' ? '#1C1C1E' : '#F2F2F7', transform: [{ translateX }] },
+          { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#FCFCFC', transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+          {/* v2: Grok Bot home header - user avatar top-left, white + circle right */}
           <View style={styles.header}>
-            <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Chats</Text>
-            <TouchableOpacity onPress={() => { haptic.light(); onNewChat?.(); }} hitSlop={12} accessibilityLabel="New chat">
-              <Ionicons name="create-outline" size={24} color={theme.brand} />
-            </TouchableOpacity>
+            <View style={styles.headerLeft}>
+              <View style={[styles.headerAvatar, { backgroundColor: theme.mode === 'dark' ? '#1C1C1C' : '#FFFFFF' }]}>
+                <Text style={[styles.headerAvatarText, { color: theme.textPrimary }]}>{userName.charAt(0).toUpperCase()}</Text>
+              </View>
+              <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Chats</Text>
+            </View>
+            <CircleButton theme={theme} icon="add" iconSize={24} label="New chat" onPress={onNewChat} />
           </View>
 
-          <View style={[styles.searchField, { backgroundColor: theme.fill }]}>
-            <Ionicons name="search" size={16} color={theme.textSecondary} />
+          <View style={[styles.searchField, { backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F1F2F1' }]}>
+            <Ionicons name="search-outline" size={17} color={theme.textSecondary} />
             <Text style={[styles.searchText, { color: theme.textSecondary }]}>Search</Text>
           </View>
-
-          <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>Recents</Text>
 
           <FlatList
             data={conversations}
@@ -161,9 +190,10 @@ export default function SidebarDrawer({
             }
           />
 
-          <View style={[styles.footer, { borderTopColor: theme.border }]}>
+          {/* xAI Grok drawer footer: avatar + name bottom-left, gear bottom-right */}
+          <View style={[styles.footer, { borderTopColor: theme.separator }]}>
             <View style={styles.userRow}>
-              <View style={[styles.avatar, { backgroundColor: theme.brand }]}>
+              <View style={[styles.avatar, { backgroundColor: theme.bubbleUser }]}>
                 <Text style={styles.avatarText}>{userName.charAt(0).toUpperCase()}</Text>
               </View>
               <Text style={[styles.userName, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -171,7 +201,7 @@ export default function SidebarDrawer({
               </Text>
             </View>
             <TouchableOpacity onPress={() => { haptic.light(); onOpenSettings?.(); }} hitSlop={12} style={styles.settingsButton} accessibilityLabel="Settings">
-              <Ionicons name="settings-outline" size={22} color={theme.brand} />
+              <Ionicons name="settings-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -202,23 +232,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingTop: 8,
     paddingBottom: 6,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerAvatar: {
+    width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+  },
+  headerAvatarText: { fontSize: 18, fontWeight: '700' },
   brandTitle: {
-    fontSize: 34,
+    fontSize: 22,
     fontWeight: '700',
-    letterSpacing: 0.37,
+    letterSpacing: -0.3,
   },
   searchField: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginHorizontal: 16,
-    marginTop: 6,
-    height: 36,
-    borderRadius: 10,
-    paddingHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 6,
+    height: 40,
+    borderRadius: 20,
+    paddingHorizontal: 14,
   },
   searchText: {
     fontSize: 17,
@@ -255,15 +292,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   convoRow: {
-    marginHorizontal: 10,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRadius: 14,
   },
+  rowAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   convoTitle: {
-    fontSize: 17,
-    letterSpacing: -0.41,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: -0.3,
   },
+  convoTime: { fontSize: 13 },
   emptyText: {
     fontSize: 13,
     textAlign: 'center',

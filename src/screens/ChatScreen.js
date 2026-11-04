@@ -17,7 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { FrostedBar, haptic } from '../ui/ios';
+import { FrostedBar, CircleButton, ZaoAvatar, AllowButton, DenyButton, haptic } from '../ui/ios';
 import { useChatStore } from '../store/chatStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import AttachmentSheet from '../components/AttachmentSheet';
@@ -194,24 +194,16 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
         </Text>
       )}
       <View style={styles.confirmCardActions}>
-        <TouchableOpacity
-          style={[styles.confirmCardBtn, { backgroundColor: theme.deny }]}
+        <DenyButton
+          theme={theme}
           onPress={() => { haptic.warning(); onDismiss?.(); }}
           disabled={busy}
-        >
-          <Text style={[styles.confirmCardBtnText, { color: theme.textPrimary }]}>Deny</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.confirmCardBtn, styles.confirmCardApproveBtn, { backgroundColor: theme.brandStrong }]}
+        />
+        <AllowButton
+          label={busy ? 'Working…' : `Allow${isTerminal ? ' & run' : ''}`}
           onPress={() => { haptic.success(); handleApprove(); }}
           disabled={busy}
-        >
-          {busy ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={[styles.confirmCardBtnText, { color: '#fff' }]}>Allow{isTerminal ? ' & run' : ''}</Text>
-          )}
-        </TouchableOpacity>
+        />
       </View>
     </View>
   );
@@ -640,65 +632,82 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
     }
   };
 
+  // Muse-style gray status line under the header name while ZAO is working.
+  const headerStatus = !isSending
+    ? null
+    : streamingText
+      ? 'Writing…'
+      : planSteps.length > 0
+        ? `Running plan · step ${planSteps.length}`
+        : planProgress
+          ? 'Planning…'
+          : browsingSteps.length > 0
+            ? 'Browsing…'
+            : 'Thinking…';
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      <FrostedBar theme={theme} style={[styles.header, { borderBottomColor: theme.separator }]}>
-        <TouchableOpacity
-          onPress={() => { haptic.light(); onOpenSidebar?.(); }}
-          hitSlop={12}
-          style={styles.chromeCircle}
-          accessibilityLabel="Open menu"
-        >
-          <Ionicons name="list" size={24} color={theme.brand} />
-        </TouchableOpacity>
-
-        <View style={[styles.modeSwitcher, { backgroundColor: theme.modeTrack }]}>
-          {[
-            { key: 'chat', label: 'Chat' },
-            { key: 'plan', label: 'Plan' },
-            { key: 'browse', label: 'Browse' },
-          ].map((mode) => {
-            const selected = activeMode === mode.key;
-            return (
-              <TouchableOpacity
-                key={mode.key}
-                style={[styles.modeSegment, selected && [styles.modeSegmentSelected, { backgroundColor: theme.modeSelected }]]}
-                onPress={() => {
-                  haptic.select();
-                  if (mode.key === 'chat') return;
-                  if (mode.key === 'plan') onOpenPlan?.(null);
-                  if (mode.key === 'browse') onOpenBrowserAgent?.();
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={mode.label}
-              >
-                <Text
-                  style={[
-                    styles.modeSegmentText,
-                    { color: theme.textPrimary, fontWeight: selected ? '600' : '500' },
-                  ]}
-                >
-                  {mode.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* v2 header: Grok Bot 44pt white circles + avatar/name pill, merged with
+          Muse's centered avatar and gray working-status line. */}
+      <View style={[styles.header, { backgroundColor: theme.background, minHeight: headerStatus ? 74 : 56 }]}>
+        <CircleButton theme={theme} icon="menu-outline" label="Open menu" onPress={onOpenSidebar} />
+        <View style={styles.headerCenter} pointerEvents="none">
+          <View style={[styles.identityPill, { backgroundColor: theme.headerPill, shadowOpacity: theme.mode === 'dark' ? 0 : 0.06 }]}>
+            <ZaoAvatar size={28} />
+            <Text style={[styles.identityName, { color: theme.textPrimary }]}>ZAO</Text>
+          </View>
+          {!!headerStatus && (
+            <Text style={[styles.identityStatus, { color: theme.textSecondary }]} numberOfLines={1}>
+              {headerStatus}
+            </Text>
+          )}
         </View>
+        <View style={styles.headerRight}>
+          <CircleButton
+            theme={theme}
+            icon="desktop-outline"
+            iconSize={20}
+            label="Open computer view"
+            onPress={onOpenBrowserAgent}
+            style={browserAgentActive ? { borderWidth: 1.5, borderColor: theme.brand } : null}
+          />
+          <CircleButton theme={theme} icon="create-outline" iconSize={20} label="New chat" onPress={onNewChat} />
+        </View>
+      </View>
 
-        <TouchableOpacity
-          onPress={() => { haptic.light(); onNewChat?.(); }}
-          hitSlop={12}
-          style={styles.chromeCircle}
-          accessibilityLabel="New chat"
-        >
-          <Ionicons name="create-outline" size={24} color={theme.brand} />
-        </TouchableOpacity>
-      </FrostedBar>
+      {/* xAI Grok-style centered text tabs (active bold, inactive gray) */}
+      <View style={[styles.modeTabs, { backgroundColor: theme.background }]}>
+        {[
+          { key: 'chat', label: 'Chat' },
+          { key: 'plan', label: 'Plan' },
+          { key: 'browse', label: 'Browse' },
+        ].map((mode) => {
+          const selected = activeMode === mode.key;
+          return (
+            <TouchableOpacity
+              key={mode.key}
+              style={[styles.modeTab, selected && { backgroundColor: theme.pill }]}
+              onPress={() => {
+                haptic.select();
+                if (mode.key === 'chat') return;
+                if (mode.key === 'plan') onOpenPlan?.(null);
+                if (mode.key === 'browse') onOpenBrowserAgent?.();
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={mode.label}
+            >
+              <Text style={[styles.modeTabText, { color: selected ? theme.textPrimary : theme.textSecondary, fontWeight: selected ? '600' : '500' }]}>
+                {mode.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {error && (
         <TouchableOpacity
@@ -863,28 +872,29 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </View>
       )}
 
-      <FrostedBar theme={theme} style={[styles.composerWrap, { borderTopColor: theme.separator }]}>
+      {/* v2 composer: Grok Bot separate ＋ circle + white pill; Grok mode pill + send ↑ */}
+      <FrostedBar theme={theme} style={styles.composerWrap}>
+        <TouchableOpacity
+          style={[styles.plusButton, { backgroundColor: theme.chromeButton, shadowOpacity: theme.mode === 'dark' ? 0 : 0.08 }]}
+          onPress={() => { haptic.light(); setAttachmentVisible(true); }}
+          accessibilityLabel="Add attachment"
+        >
+          <Ionicons name="add" size={24} color={theme.chromeIcon} />
+        </TouchableOpacity>
+
         <View style={[styles.composerCard, { backgroundColor: theme.composer, borderColor: theme.composerBorder }]}>
           <TextInput
             style={[styles.textInput, { color: theme.textPrimary }]}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Message"
+            placeholder="Ask ZAO"
             placeholderTextColor={theme.textTertiary}
             multiline
             maxLength={8000}
           />
           <View style={styles.composerControls}>
-            <TouchableOpacity
-              style={[styles.plusButton, { backgroundColor: theme.fill }]}
-              onPress={() => { haptic.light(); setAttachmentVisible(true); }}
-              accessibilityLabel="Add attachment"
-            >
-              <Ionicons name="add" size={22} color={theme.textSecondary} />
-            </TouchableOpacity>
-
             <View style={[styles.modelPill, { backgroundColor: theme.fill }]}>
-              <Ionicons name="sparkles" size={13} color={theme.brand} />
+              <Ionicons name="sparkles-outline" size={13} color={theme.textSecondary} />
               <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
                 {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
               </Text>
@@ -909,8 +919,6 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
                 color={preferences.browser_access_enabled ? theme.brand : theme.textSecondary}
               />
             </TouchableOpacity>
-
-            <View style={{ flex: 1 }} />
 
             <View style={styles.actionSlot}>
               <Animated.View
@@ -998,12 +1006,61 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 4,
+    minHeight: 56,
+  },
+  headerCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 6,
+    alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
     gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  identityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    paddingLeft: 8,
+    paddingRight: 16,
+    borderRadius: 22,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  identityName: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+  },
+  identityStatus: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  modeTabs: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+  modeTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  modeTabText: {
+    fontSize: 15,
+    letterSpacing: -0.24,
   },
   chromeCircle: {
     width: 36,
@@ -1191,9 +1248,9 @@ const styles = StyleSheet.create({
   confirmCard: {
     marginTop: 10,
     alignSelf: 'stretch',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   confirmCardHeader: {
     flexDirection: 'row',
@@ -1309,37 +1366,46 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   composerWrap: {
-    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 10,
   },
   composerCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    minHeight: 44,
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: 8,
-    paddingHorizontal: 10,
-    paddingBottom: 8,
+    paddingVertical: 5,
+    paddingLeft: 12,
+    paddingRight: 6,
   },
   composerControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 8,
+    gap: 4,
   },
   plusButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 10,
+    elevation: 2,
   },
   modelPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
   },
   modelPillText: {
@@ -1347,19 +1413,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   browserToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textInput: {
+    flex: 1,
     fontSize: 17,
     letterSpacing: -0.41,
     maxHeight: 100,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    minHeight: 28,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+    minHeight: 32,
   },
   actionSlot: {
     minWidth: 34,
