@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { haptic, CircleButton } from '../ui/ios';
+import { haptic, CircleButton, GlassFill } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -60,7 +60,7 @@ function ConversationRow({ conversation, isActive, onPress, onLongPress, theme }
   const title = conversation.title || 'New Conversation';
   return (
     <TouchableOpacity
-      style={[styles.convoRow, isActive && { backgroundColor: theme.mode === 'dark' ? '#1C1C1C' : '#FFFFFF' }]}
+      style={[styles.convoRow, isActive && { backgroundColor: theme.glassSelected }]}
       onPress={() => onPress(conversation.id)}
       onLongPress={() => onLongPress?.(conversation)}
     >
@@ -148,15 +148,16 @@ export default function SidebarDrawer({
       <Animated.View
         style={[
           styles.drawer,
-          { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : '#FCFCFC', transform: [{ translateX }] },
+          { backgroundColor: 'transparent', borderRightWidth: 1, borderRightColor: theme.glassHighlight, transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
+        <GlassFill theme={theme} radius={0} strong intensity={60} />
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           {/* v2: Grok Bot home header - user avatar top-left, white + circle right */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View style={[styles.headerAvatar, { backgroundColor: theme.mode === 'dark' ? '#1C1C1C' : '#FFFFFF' }]}>
+              <View style={[styles.headerAvatar, { backgroundColor: theme.glassSelected, borderWidth: 1, borderColor: theme.glassHighlight }]}>
                 <Text style={[styles.headerAvatarText, { color: theme.textPrimary }]}>{userName.charAt(0).toUpperCase()}</Text>
               </View>
               <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Chats</Text>
@@ -164,7 +165,7 @@ export default function SidebarDrawer({
             <CircleButton theme={theme} icon="add" iconSize={24} label="New chat" onPress={onNewChat} />
           </View>
 
-          <View style={[styles.searchField, { backgroundColor: theme.mode === 'dark' ? '#1A1A1A' : '#F1F2F1' }]}>
+          <View style={[styles.searchField, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: theme.glassHighlight }]}>
             <Ionicons name="search-outline" size={17} color={theme.textSecondary} />
             <Text style={[styles.searchText, { color: theme.textSecondary }]}>Search</Text>
           </View>

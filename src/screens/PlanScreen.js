@@ -17,7 +17,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FrostedBar, CircleButton, haptic } from '../ui/ios';
+import { FrostedBar, CircleButton, GlassFill, glassSurface, haptic } from '../ui/ios';
 import { usePlanStore } from '../store/planStore';
 import { useTheme } from '../theme/useTheme';
 import StepDetailSheet from './StepDetailSheet';
@@ -113,7 +113,7 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
 
   const inlineTitleOpacity = scrollY.interpolate({ inputRange: [30, 60], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
-    <View style={[styles.container, { backgroundColor: theme.groupedBackground }]}>
+    <View style={[styles.container, { backgroundColor: 'transparent' }]}>
       <FrostedBar theme={theme} style={[styles.header, { borderBottomColor: theme.separator }]}>
         <View style={styles.backBtn}>
           <CircleButton theme={theme} icon="chevron-back" label="Back to chat" onPress={onClose} />
@@ -126,8 +126,9 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
             <TouchableOpacity
               onPress={() => { haptic.warning(); onCancelPlan?.(activePlan.id); }}
               hitSlop={8}
-              style={[styles.stopPill, { backgroundColor: theme.chromeButton, shadowOpacity: theme.mode === 'dark' ? 0 : 0.08 }]}
+              style={[styles.stopPill, glassSurface(theme, 22)]}
             >
+              <GlassFill theme={theme} radius={22} strong />
               <Ionicons name="stop-circle-outline" size={18} color={theme.danger} />
               <Text style={[styles.cancelText, { color: theme.danger }]}>Stop</Text>
             </TouchableOpacity>
@@ -302,11 +303,12 @@ function StepRow({ step, index, isLast, theme, onApprove, onReject, onOpenDetail
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={onOpenDetail}
-      style={[styles.stepRow, isSubtask && styles.stepRowIndented]}
+      style={[styles.stepRow, glassSurface(theme, 16), styles.stepGlass, isSubtask && styles.stepRowIndented]}
     >
+      <GlassFill theme={theme} radius={16} />
       <View style={styles.stepIconCol}>
         <Ionicons name={iconInfo.name} size={20} color={iconColor} />
-        {!isLast && <View style={[styles.stepConnector, { backgroundColor: theme.border }]} />}
+        {/* glass pass: steps are separate frosted cards, so no connector line */}
       </View>
       <View style={styles.stepContent}>
         <View style={styles.stepTopRow}>
@@ -385,7 +387,8 @@ const styles = StyleSheet.create({
   stepRowIndented: { marginLeft: 20 },
   stepIconCol: { alignItems: 'center', width: 20 },
   stepConnector: { width: 1.5, flex: 1, minHeight: 18, marginTop: 4 },
-  stepContent: { flex: 1, paddingBottom: 18 },
+  stepContent: { flex: 1 },
+  stepGlass: { padding: 14, marginBottom: 10 },
   stepTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   subtaskTag: { fontSize: 11, marginLeft: 4 },
   stepDetailHintRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },

@@ -18,6 +18,7 @@ import { useChatStore } from './src/store/chatStore';
 import { usePreferencesStore } from './src/store/preferencesStore';
 import { usePlanStore } from './src/store/planStore';
 import { useThemeStore } from './src/store/themeStore';
+import { AmbientBackground } from './src/ui/ios';
 import { useTheme, useResolvedThemeMode } from './src/theme/useTheme';
 
 function AppShell() {
@@ -274,7 +275,8 @@ function AppShell() {
   return (
     <>
       <StatusBar barStyle={theme.statusBarStyle} backgroundColor={theme.background} />
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.ambientBase }]} edges={['top']}>
+        <AmbientBackground theme={theme} />
         {dbError && (
           <View style={[styles.dbErrorBanner, { backgroundColor: '#FEF3C7' }]}>
             <Text style={styles.dbErrorText}>

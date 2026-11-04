@@ -17,7 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { FrostedBar, CircleButton, ZaoAvatar, AllowButton, DenyButton, haptic } from '../ui/ios';
+import { CircleButton, ZaoAvatar, AllowButton, DenyButton, GlassFill, glassSurface, haptic } from '../ui/ios';
 import { useChatStore } from '../store/chatStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import AttachmentSheet from '../components/AttachmentSheet';
@@ -173,7 +173,8 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
   };
 
   return (
-    <View style={[styles.confirmCard, { backgroundColor: theme.surfaceElevated, borderColor: theme.borderStrong }]}>
+    <View style={[styles.confirmCard, glassSurface(theme, 20)]}>
+      <GlassFill theme={theme} radius={20} strong />
       <View style={styles.confirmCardHeader}>
         <Ionicons name="shield-checkmark-outline" size={16} color={theme.brand} />
         <Text style={[styles.confirmCardTitle, { color: theme.textPrimary }]}>Needs your approval</Text>
@@ -233,9 +234,9 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
           style={[
             styles.bubble,
             isUser
-              ? { backgroundColor: theme.bubbleUser }
+              ? { backgroundColor: theme.userBubbleGlass, borderWidth: 1, borderColor: theme.userBubbleHighlight }
               : theme.assistantUsesBubble
-                ? { backgroundColor: theme.bubbleAssistant }
+                ? glassSurface(theme, 18)
                 : styles.bubblePlainAssistant,
             message.is_error && {
               backgroundColor: theme.dangerSoft,
@@ -245,6 +246,7 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
             (message.local_image_path || message.local_attachment_path) && styles.bubbleImagePadding,
           ]}
         >
+          {!isUser && theme.assistantUsesBubble && !message.is_error && <GlassFill theme={theme} radius={18} />}
           {message.local_image_path && (
             // Image bubble - the person's own attached photo (see
             // copyAttachmentLocally in chatStore.js), stored as a local
@@ -647,16 +649,17 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.background }]}
+      style={[styles.container, { backgroundColor: 'transparent' }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
       {/* v2 header: Grok Bot 44pt white circles + avatar/name pill, merged with
           Muse's centered avatar and gray working-status line. */}
-      <View style={[styles.header, { backgroundColor: theme.background, minHeight: headerStatus ? 74 : 56 }]}>
+      <View style={[styles.header, { backgroundColor: 'transparent', minHeight: headerStatus ? 74 : 56 }]}>
         <CircleButton theme={theme} icon="menu-outline" label="Open menu" onPress={onOpenSidebar} />
         <View style={styles.headerCenter} pointerEvents="none">
-          <View style={[styles.identityPill, { backgroundColor: theme.headerPill, shadowOpacity: theme.mode === 'dark' ? 0 : 0.06 }]}>
+          <View style={[styles.identityPill, glassSurface(theme, 22)]}>
+            <GlassFill theme={theme} radius={22} strong />
             <ZaoAvatar size={28} />
             <Text style={[styles.identityName, { color: theme.textPrimary }]}>ZAO</Text>
           </View>
@@ -680,7 +683,9 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
       </View>
 
       {/* xAI Grok-style centered text tabs (active bold, inactive gray) */}
-      <View style={[styles.modeTabs, { backgroundColor: theme.background }]}>
+      <View style={styles.modeTabsRow}>
+      <View style={[styles.modeTabs, glassSurface(theme, 999)]}>
+        <GlassFill theme={theme} radius={999} />
         {[
           { key: 'chat', label: 'Chat' },
           { key: 'plan', label: 'Plan' },
@@ -690,7 +695,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
           return (
             <TouchableOpacity
               key={mode.key}
-              style={[styles.modeTab, selected && { backgroundColor: theme.pill }]}
+              style={[styles.modeTab, selected && { backgroundColor: theme.glassSelected }]}
               onPress={() => {
                 haptic.select();
                 if (mode.key === 'chat') return;
@@ -707,6 +712,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             </TouchableOpacity>
           );
         })}
+      </View>
       </View>
 
       {error && (
@@ -873,8 +879,9 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
       )}
 
       {/* Final mix: v1 composer card (Message on top, controls row below) under the v2 header */}
-      <FrostedBar theme={theme} style={[styles.composerWrap, { borderTopColor: theme.separator }]}>
-        <View style={[styles.composerCard, { backgroundColor: theme.composer, borderColor: theme.composerBorder }]}>
+      <View style={styles.composerWrap}>
+        <View style={[styles.composerCard, glassSurface(theme, 22)]}>
+          <GlassFill theme={theme} radius={22} strong />
           <TextInput
             style={[styles.textInput, { color: theme.textPrimary }]}
             value={inputText}
@@ -957,7 +964,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             </View>
           </View>
         </View>
-      </FrostedBar>
+      </View>
 
       <AttachmentSheet
         visible={attachmentVisible}
@@ -1047,12 +1054,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  modeTabsRow: {
+    alignItems: 'center',
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
   modeTabs: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 4,
-    paddingTop: 8,
-    paddingBottom: 6,
+    gap: 2,
+    padding: 3,
   },
   modeTab: {
     paddingHorizontal: 14,
@@ -1370,7 +1381,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   composerCard: {
     borderRadius: 22,

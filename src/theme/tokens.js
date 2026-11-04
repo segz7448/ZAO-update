@@ -85,10 +85,21 @@ export const lightTheme = {
   fill: '#EFEFF0',
   barTint: 'rgba(252,252,252,0.86)',
   blurTint: 'light',
+  // Glass pass: translucent fills over the ambient orb background (BlurView on iOS).
+  glassFill: 'rgba(255,255,255,0.55)',
+  glassFillStrong: 'rgba(255,255,255,0.72)',
+  glassFillAndroid: 'rgba(255,255,255,0.82)', // no live blur on Android: denser fill keeps AA contrast
+  glassHighlight: 'rgba(255,255,255,0.6)',
+  glassShadowOpacity: 0.10,
+  glassBlurIntensity: 40,
+  glassSelected: 'rgba(255,255,255,0.85)',
+  userBubbleGlass: 'rgba(11,11,11,0.86)',
+  userBubbleHighlight: 'rgba(255,255,255,0.18)',
+  ambientBase: '#F2F4FA',
 
   textPrimary: '#000000',
-  textSecondary: '#8A8A8D',       // Grok Bot value/icon gray
-  textTertiary: '#BEBEC0',        // Grok Bot helper text
+  textSecondary: '#636366',       // darkened for WCAG AA on glass (≈5.2:1)
+  textTertiary: '#76767B',        // Grok Bot helper text
   textInverse: '#FFFFFF',
   chevron: '#A7A7AA',
   timestamp: '#BABABA',
@@ -154,6 +165,16 @@ export const darkTheme = {
   fill: '#262626',
   barTint: 'rgba(10,10,10,0.86)',
   blurTint: 'dark',
+  glassFill: 'rgba(28,28,30,0.5)',
+  glassFillStrong: 'rgba(28,28,30,0.68)',
+  glassFillAndroid: 'rgba(28,28,30,0.84)',
+  glassHighlight: 'rgba(255,255,255,0.12)',
+  glassShadowOpacity: 0.35,
+  glassBlurIntensity: 50,
+  glassSelected: 'rgba(255,255,255,0.14)',
+  userBubbleGlass: 'rgba(48,48,52,0.82)',
+  userBubbleHighlight: 'rgba(255,255,255,0.14)',
+  ambientBase: '#08080C',
 
   textPrimary: '#FFFFFF',
   textSecondary: '#9A9A9E',
@@ -178,8 +199,8 @@ export const darkTheme = {
   bubbleAssistant: 'transparent',
   bubbleUserText: '#FFFFFF',
   bubbleAssistantText: '#FFFFFF',
-  /** Grok dark: assistant replies as plain text */
-  assistantUsesBubble: false,
+  /** Glass pass: frosted assistant bubbles in dark too (was Grok plain text) */
+  assistantUsesBubble: true,
 
   speak: '#FFFFFF',               // Grok Speak/send: white in dark
   speakText: '#000000',

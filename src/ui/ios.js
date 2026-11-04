@@ -32,6 +32,51 @@ export function Grabber({ theme }) {
   return <View style={[styles.grabber, { backgroundColor: theme.mode === 'dark' ? '#5A5A5E' : '#C7C7CC' }]} />;
 }
 
+const AMBIENT_LIGHT = require('../../assets/ui/ambient-light.png');
+const AMBIENT_DARK = require('../../assets/ui/ambient-dark.png');
+
+/**
+ * Glass layer: absolutely fills its parent. iOS = live BlurView + translucent tint;
+ * Android = denser translucent fill (no reliable live blur). Put it as the FIRST
+ * child of a container styled with glassSurface().
+ */
+export function GlassFill({ theme, radius = 16, strong = false, intensity, shapeStyle }) {
+  const fill = Platform.OS === 'ios' ? (strong ? theme.glassFillStrong : theme.glassFill) : theme.glassFillAndroid;
+  const shape = [StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }, shapeStyle];
+  if (Platform.OS === 'ios') {
+    return (
+      <BlurView pointerEvents="none" tint={theme.blurTint} intensity={intensity ?? theme.glassBlurIntensity} style={shape}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: fill }]} />
+      </BlurView>
+    );
+  }
+  return <View pointerEvents="none" style={[shape, { backgroundColor: fill }]} />;
+}
+
+/** Container style for glass: 1px inner highlight border + soft shadow; fill comes from GlassFill. */
+export function glassSurface(theme, radius = 16) {
+  return {
+    backgroundColor: 'transparent',
+    borderRadius: radius,
+    borderWidth: 1,
+    borderColor: theme.glassHighlight,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 18,
+    shadowOpacity: theme.glassShadowOpacity,
+    elevation: 0,
+  };
+}
+
+/** Ambient backdrop: soft blurred blue/violet orbs (box-generated, ZAO orb palette). */
+export function AmbientBackground({ theme }) {
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.ambientBase }]}>
+      <Image source={theme.mode === 'dark' ? AMBIENT_DARK : AMBIENT_LIGHT} resizeMode="cover" style={StyleSheet.absoluteFill} />
+    </View>
+  );
+}
+
 const ORB = require('../../assets/ui/zao-orb.png');
 const ALLOW_GRADIENT = require('../../assets/ui/allow-gradient.png');
 
@@ -59,12 +104,9 @@ export function CircleButton({ theme, icon, onPress, size = 44, label, iconSize 
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={6}
-      style={[styles.circle, {
-        width: size, height: size, borderRadius: size / 2,
-        backgroundColor: theme.chromeButton,
-        shadowOpacity: theme.mode === 'dark' ? 0 : 0.08,
-      }, style]}
+      style={[styles.circle, glassSurface(theme, size / 2), { width: size, height: size }, style]}
     >
+      <GlassFill theme={theme} radius={size / 2} strong />
       {children || <Ionicons name={icon} size={iconSize} color={theme.chromeIcon} />}
     </TouchableOpacity>
   );

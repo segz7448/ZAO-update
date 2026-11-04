@@ -13,7 +13,7 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { IconTile, haptic } from '../ui/ios';
+import { IconTile, GlassFill, glassSurface, haptic } from '../ui/ios';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
@@ -1495,7 +1495,8 @@ function UsageModal({ visible, onClose, theme }) {
         ) : (
           <ScrollView style={styles.container}>
             <SectionHeader title="Backend" theme={theme} />
-            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+            <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
               <View style={styles.usageHealthRow}>
                 <View style={[styles.healthDot, { backgroundColor: backendStatus.ready ? '#22C55E' : backendStatus.connected ? '#F59E0B' : '#EF4444' }]} />
                 <Text style={[styles.usageRowLabel, { color: theme.textPrimary, flex: 1 }]}>{ACTIVE_MODEL.label}</Text>
@@ -1509,7 +1510,8 @@ function UsageModal({ visible, onClose, theme }) {
             </View>
 
             <SectionHeader title="Activity" theme={theme} />
-            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+            <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
               <UsageRow label="Browser sessions" value={counts.browser_session || 0} theme={theme} />
               <UsageRow label="GitHub pushes" value={counts.github_push || 0} theme={theme} />
               <UsageRow label="Repos created" value={counts.github_repo_created || 0} theme={theme} />
@@ -1518,15 +1520,17 @@ function UsageModal({ visible, onClose, theme }) {
 
 
             <TouchableOpacity
-              style={[styles.card, { backgroundColor: theme.surface, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              style={[styles.card, glassSurface(theme, 10), { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
               onPress={() => setDevModeExpanded((v) => !v)}
             >
+                <GlassFill theme={theme} radius={10} />
               <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Developer Mode</Text>
               <Ionicons name={devModeExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.textSecondary} />
             </TouchableOpacity>
 
             {devModeExpanded && (
-              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
                 <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 8 }]}>
                   Most recent tool/model calls, newest first:
                 </Text>
@@ -1582,7 +1586,7 @@ export default function SettingsScreen({ onOpenSidebar }) {
   return (
     <>
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.groupedBackground }]}
+      style={[styles.container, { backgroundColor: 'transparent' }]}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
       <View style={styles.header}>
@@ -1600,7 +1604,8 @@ export default function SettingsScreen({ onOpenSidebar }) {
       <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
 
       <SectionHeader title="Appearance" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <RadioOption
           label="Auto"
           subtitle="Follows your phone's system setting"
@@ -1631,7 +1636,8 @@ export default function SettingsScreen({ onOpenSidebar }) {
       </View>
 
       <SectionHeader title="Usage" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <TouchableOpacity
           style={styles.navRow}
           onPress={() => { haptic.light(); setUsageModalVisible(true); }}
@@ -1643,12 +1649,14 @@ export default function SettingsScreen({ onOpenSidebar }) {
       </View>
 
       <SectionHeader title="Server Connection" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <BackendConnectionSection preferences={preferences} theme={theme} />
       </View>
 
       <SectionHeader title="GitHub" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <GithubCredentialsSection
           status={apiKeyStatus.github}
           onSaveUsername={setGithubUsername}
@@ -1662,7 +1670,8 @@ export default function SettingsScreen({ onOpenSidebar }) {
       </View>
 
       <SectionHeader title="Browser Agent" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <BrowserAgentSection preferences={preferences} theme={theme} />
         <Text style={[styles.helperText, { color: theme.textTertiary }]}>
           Lets ZAO actually browse the live web — search, open pages, log in, click, fill forms, and read content — using a real browser on the VM, driven by Ox Alpha (via OpenRouter) acting as an agent.
@@ -1671,47 +1680,56 @@ export default function SettingsScreen({ onOpenSidebar }) {
 
 
       <SectionHeader title="Filesystem" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <FilesystemAccessSection preferences={preferences} theme={theme} />
       </View>
 
       <SectionHeader title="Memory" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <MemorySection preferences={preferences} onToggle={setMemoryEnabled} theme={theme} />
       </View>
 
       <SectionHeader title="Reminders" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <RemindersSection theme={theme} />
       </View>
 
       <SectionHeader title="Permissions" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <PermissionModeSection preferences={preferences} onSetMode={setPermissionMode} theme={theme} />
       </View>
 
       <SectionHeader title="Checkpoints" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <CheckpointsSection theme={theme} />
       </View>
 
       <SectionHeader title="Hooks" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <HooksSection theme={theme} />
       </View>
 
       <SectionHeader title="Worktrees" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <WorktreesSection theme={theme} />
       </View>
 
       <SectionHeader title="Agent Activity" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <AuditTrailSection preferences={preferences} onSetOtelEndpoint={setOtelExportEndpoint} theme={theme} />
       </View>
 
       <SectionHeader title="About ZAO" theme={theme} />
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+        <GlassFill theme={theme} radius={10} />
         <ArchitectureSection theme={theme} />
       </View>
     </ScrollView>

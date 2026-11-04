@@ -22,7 +22,7 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FrostedBar, Grabber, IconTile, haptic } from '../ui/ios';
+import { Grabber, IconTile, GlassFill, haptic } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
 function ActionRow({ icon, color, label, onPress, theme, last }) {
@@ -77,11 +77,12 @@ export default function AttachmentSheet({
 }) {
   const theme = useTheme();
 
-  const groupBg = theme.mode === 'dark' ? theme.tertiarySystemBackground : theme.surface;
+  const groupBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.62)';
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={[styles.backdrop, { backgroundColor: theme.overlay }]} onPress={onClose} />
-      <FrostedBar theme={theme} intensity={90} style={[styles.sheet, { backgroundColor: theme.mode === 'dark' ? 'rgba(28,28,30,0.94)' : 'rgba(242,242,247,0.94)' }]}>
+      <View style={[styles.sheet, { borderWidth: 1, borderBottomWidth: 0, borderColor: theme.glassHighlight }]}>
+        <GlassFill theme={theme} radius={0} strong intensity={70} shapeStyle={{ borderTopLeftRadius: 14, borderTopRightRadius: 14 }} />
         <Grabber theme={theme} />
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.textPrimary }]}>Add to Chat</Text>
@@ -95,14 +96,14 @@ export default function AttachmentSheet({
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.group, { backgroundColor: groupBg }]}>
+        <View style={[styles.group, { backgroundColor: groupBg, borderWidth: 1, borderColor: theme.glassHighlight }]}>
           <ActionRow icon="camera" color={theme.tileColors.gray} label="Camera" onPress={onCamera} theme={theme} />
           <ActionRow icon="images" color={theme.tileColors.blue} label="Photos" onPress={onPhotos} theme={theme} />
           <ActionRow icon="document" color={theme.tileColors.orange} label="Files" onPress={onFiles} theme={theme} last />
         </View>
 
         <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>TOOLS</Text>
-        <View style={[styles.group, { backgroundColor: groupBg }]}>
+        <View style={[styles.group, { backgroundColor: groupBg, borderWidth: 1, borderColor: theme.glassHighlight }]}>
           <ToggleRow
             icon="globe"
             color={theme.tileColors.teal}
@@ -123,7 +124,7 @@ export default function AttachmentSheet({
             last
           />
         </View>
-      </FrostedBar>
+      </View>
     </Modal>
   );
 }
