@@ -113,7 +113,7 @@ export const lightTheme = {
 
   speak: '#0B0B0B',
   speakText: '#FFFFFF',
-  sendDisabled: '#D9D9DB',
+  sendDisabled: '#C7C7CC',
   citationCard: '#F1F2F1',
   chipBlue: 'rgba(7,98,213,0.10)',
   chipGrey: '#F1F2F1',

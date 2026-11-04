@@ -872,29 +872,29 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </View>
       )}
 
-      {/* v2 composer: Grok Bot separate ＋ circle + white pill; Grok mode pill + send ↑ */}
-      <FrostedBar theme={theme} style={styles.composerWrap}>
-        <TouchableOpacity
-          style={[styles.plusButton, { backgroundColor: theme.chromeButton, shadowOpacity: theme.mode === 'dark' ? 0 : 0.08 }]}
-          onPress={() => { haptic.light(); setAttachmentVisible(true); }}
-          accessibilityLabel="Add attachment"
-        >
-          <Ionicons name="add" size={24} color={theme.chromeIcon} />
-        </TouchableOpacity>
-
+      {/* Final mix: v1 composer card (Message on top, controls row below) under the v2 header */}
+      <FrostedBar theme={theme} style={[styles.composerWrap, { borderTopColor: theme.separator }]}>
         <View style={[styles.composerCard, { backgroundColor: theme.composer, borderColor: theme.composerBorder }]}>
           <TextInput
             style={[styles.textInput, { color: theme.textPrimary }]}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask ZAO"
+            placeholder="Message"
             placeholderTextColor={theme.textTertiary}
             multiline
             maxLength={8000}
           />
           <View style={styles.composerControls}>
+            <TouchableOpacity
+              style={[styles.plusButton, { backgroundColor: theme.fill }]}
+              onPress={() => { haptic.light(); setAttachmentVisible(true); }}
+              accessibilityLabel="Add attachment"
+            >
+              <Ionicons name="add" size={22} color={theme.textSecondary} />
+            </TouchableOpacity>
+
             <View style={[styles.modelPill, { backgroundColor: theme.fill }]}>
-              <Ionicons name="sparkles-outline" size={13} color={theme.textSecondary} />
+              <Ionicons name="sparkles" size={13} color={theme.brand} />
               <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
                 {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
               </Text>
@@ -920,22 +920,23 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
               />
             </TouchableOpacity>
 
+            <View style={{ flex: 1 }} />
+
             <View style={styles.actionSlot}>
               <Animated.View
-                pointerEvents={hasText ? 'auto' : 'none'}
+                pointerEvents="auto"
                 style={[
                   styles.sendButtonWrap,
                   {
-                    opacity: composerAnim,
                     transform: [
-                      { scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+                      { scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
                     ],
                   },
                 ]}
               >
                 {editingMessageId ? (
                   <TouchableOpacity
-                    style={[styles.sendCircle, { backgroundColor: theme.speak }]}
+                    style={[styles.sendCircle, { backgroundColor: hasText ? theme.speak : theme.sendDisabled }]}
                     onPress={() => { haptic.medium(); handleSaveEdit(); }}
                     disabled={!hasText}
                     accessibilityLabel="Save edit"
@@ -944,12 +945,12 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    style={[styles.sendCircle, { backgroundColor: isSending ? theme.sendDisabled : theme.speak }]}
+                    style={[styles.sendCircle, { backgroundColor: !hasText || isSending ? theme.sendDisabled : theme.speak }]}
                     onPress={() => { haptic.medium(); handleSend(); }}
                     disabled={!hasText || isSending}
                     accessibilityLabel="Send"
                   >
-                    <Ionicons name="arrow-up" size={18} color={theme.speakText} />
+                    <Ionicons name="arrow-up" size={18} color={!hasText || isSending ? '#FFFFFF' : theme.speakText} />
                   </TouchableOpacity>
                 )}
               </Animated.View>
@@ -1366,46 +1367,37 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   composerWrap: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingTop: 8,
-    paddingBottom: 10,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   composerCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    minHeight: 44,
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 5,
-    paddingLeft: 12,
-    paddingRight: 6,
+    paddingTop: 8,
+    paddingHorizontal: 10,
+    paddingBottom: 8,
   },
   composerControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    marginTop: 8,
+    gap: 8,
   },
   plusButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 10,
-    elevation: 2,
   },
   modelPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: 999,
   },
   modelPillText: {
@@ -1413,20 +1405,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   browserToggle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textInput: {
-    flex: 1,
     fontSize: 17,
     letterSpacing: -0.41,
     maxHeight: 100,
-    paddingVertical: 6,
-    paddingHorizontal: 2,
-    minHeight: 32,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    minHeight: 28,
   },
   actionSlot: {
     minWidth: 34,
