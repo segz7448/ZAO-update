@@ -2206,6 +2206,72 @@ export async function getPlans(limit = 50) {
   }
 }
 
+/**
+ * Plans home (PlanHome.js): one summary row per TOP-LEVEL plan (no
+ * parent_plan_id), with step counts rolled up across every descendant
+ * plan in its tree (a decomposed goal keeps its steps on Execution
+ * leaves), the currently running/awaiting step's description, every
+ * Execution leaf's status (so the caller can aggregate the same way
+ * planStore's buildDisplayPlan does) and the latest real activity time
+ * (plan updated_at or any step's started_at/completed_at). Read-only.
+ */
+export async function getPlanSummaries(limit = 100) {
+  try {
+    const db = await getDb();
+    if (!db) return { success: false, error: 'DB_OPEN_FAILED', data: [] };
+    const roots = await db.getAllAsync(`SELECT * FROM plans WHERE parent_plan_id IS NULL ORDER BY updated_at DESC LIMIT ?`, [limit]);
+    if (!roots || roots.length === 0) return { success: true, data: [], error: null };
+    const tree = `WITH RECURSIVE tree(root_id, id) AS (
+        SELECT id, id FROM plans WHERE parent_plan_id IS NULL
+        UNION ALL SELECT t.root_id, p.id FROM plans p JOIN tree t ON p.parent_plan_id = t.id)`;
+    const stepAgg = await db.getAllAsync(`${tree}
+      SELECT t.root_id AS root_id,
+        COUNT(s.id) AS total_steps,
+        SUM(CASE WHEN s.status = 'done' THEN 1 ELSE 0 END) AS done_steps,
+        SUM(CASE WHEN s.status = 'failed' THEN 1 ELSE 0 END) AS failed_steps,
+        SUM(CASE WHEN s.status = 'running' THEN 1 ELSE 0 END) AS running_steps,
+        SUM(CASE WHEN s.status = 'awaiting_approval' THEN 1 ELSE 0 END) AS awaiting_steps,
+        MAX(COALESCE(s.completed_at, s.started_at, 0)) AS last_step_at
+      FROM tree t JOIN plan_steps s ON s.plan_id = t.id GROUP BY t.root_id`);
+    const current = await db.getAllAsync(`${tree}
+      SELECT t.root_id AS root_id, s.description AS description, s.status AS status
+      FROM tree t JOIN plan_steps s ON s.plan_id = t.id
+      WHERE s.status IN ('running', 'awaiting_approval') ORDER BY s.step_order ASC`);
+    const leaves = await db.getAllAsync(`${tree}
+      SELECT t.root_id AS root_id, p.status AS status FROM tree t JOIN plans p ON p.id = t.id WHERE p.level = 'execution'`);
+    const msAgg = await db.getAllAsync(`${tree}
+      SELECT t.root_id AS root_id, COUNT(m.id) AS total_milestones,
+        SUM(CASE WHEN m.status = 'reached' THEN 1 ELSE 0 END) AS reached_milestones
+      FROM tree t JOIN plan_milestones m ON m.plan_id = t.id GROUP BY t.root_id`);
+    const by = (rows) => { const m = new Map(); for (const r of rows || []) m.set(r.root_id, r); return m; };
+    const steps = by(stepAgg); const ms = by(msAgg);
+    const cur = new Map(); for (const r of current || []) if (!cur.has(r.root_id)) cur.set(r.root_id, r);
+    const leafStatuses = new Map();
+    for (const r of leaves || []) { if (!leafStatuses.has(r.root_id)) leafStatuses.set(r.root_id, []); leafStatuses.get(r.root_id).push(r.status); }
+    const data = roots.map((p) => {
+      const a = steps.get(p.id) || {}; const m = ms.get(p.id) || {}; const c = cur.get(p.id);
+      return {
+        ...p,
+        total_steps: a.total_steps || 0,
+        done_steps: a.done_steps || 0,
+        failed_steps: a.failed_steps || 0,
+        running_steps: a.running_steps || 0,
+        awaiting_steps: a.awaiting_steps || 0,
+        total_milestones: m.total_milestones || 0,
+        reached_milestones: m.reached_milestones || 0,
+        current_step: c ? c.description : null,
+        current_step_status: c ? c.status : null,
+        leaf_statuses: leafStatuses.get(p.id) || [],
+        last_activity_at: Math.max(p.updated_at || 0, a.last_step_at || 0),
+      };
+    });
+    return { success: true, data, error: null };
+  } catch (err) {
+    console.error('[DB] getPlanSummaries failed:', err);
+    return { success: false, error: err?.message || 'UNKNOWN_ERROR', data: [] };
+  }
+}
+
 /** Any plan not yet in a terminal state (completed/failed/cancelled) - used on app launch to check "was something left running/paused when the app closed?" */
 export async function getActivePlans() {
   try {

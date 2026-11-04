@@ -23,6 +23,7 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { AppIconTile, fileIconKey } from '../ui/icons';
 import { Ionicons } from '@expo/vector-icons';
 import * as filesystemTool from '../services/filesystem/filesystemTool';
 import { pullFile } from '../services/terminal/pcFilePullTool';
@@ -111,9 +112,7 @@ function ArtifactRow({ artifact, theme, onToast, isLast }) {
       disabled={status === 'downloading'}
       activeOpacity={0.7}
     >
-      <View style={[styles.rowIcon, { backgroundColor: theme.surfaceAlt }]}>
-        <Ionicons name={meta.icon} size={20} color={theme.textSecondary} />
-      </View>
+      <AppIconTile k={fileIconKey(artifact.path)} size={36} style={{ marginRight: 12 }} />
       <View style={styles.rowInfo}>
         <Text style={[styles.rowName, { color: theme.textPrimary }]} numberOfLines={1}>{fileName}</Text>
         <Text style={[styles.rowType, { color: theme.textTertiary }]}>{meta.label}</Text>

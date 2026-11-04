@@ -29,6 +29,7 @@ import {
   getPlanTree,
   getPlans,
   getActivePlans,
+  getPlanSummaries,
   updatePlanStatus,
   updatePlanStep,
   deletePlan as dbDeletePlan,
@@ -361,6 +362,16 @@ export const usePlanStore = create((set, get) => ({
     }
   },
 
+  // Plans home rows (getPlanSummaries) - top-level plans with rolled-up step/milestone counts.
+  planSummaries: [],
+  summariesLoaded: false,
+  async loadPlanSummaries(limit = 100) {
+    const result = await getPlanSummaries(limit);
+    if (result.success) set({ planSummaries: result.data, summariesLoaded: true });
+    else set({ summariesLoaded: true });
+    return result;
+  },
+
   async loadPlans(limit = 50) {
     set({ isLoading: true });
     const result = await getPlans(limit);
@@ -464,6 +475,7 @@ export const usePlanStore = create((set, get) => ({
       set((state) => ({
         activePlan: state.activePlan?.id === planId ? null : state.activePlan,
         plans: state.plans.filter((p) => p.id !== planId),
+        planSummaries: state.planSummaries.filter((p) => p.id !== planId),
         resumablePlans: state.resumablePlans.filter((p) => p.id !== planId),
       }));
     }
@@ -523,8 +535,8 @@ async function buildDisplayPlan(planRow) {
 }
 
 /** Rolls several Execution leaves' individual statuses up into one plan-level status for the aggregated view above - ordered most-attention-needed first, since that's what a person opening the plan most wants surfaced. */
-function aggregateStatus(leaves) {
-  const statuses = leaves.map((l) => l.status);
+export function aggregateStatus(leaves) {
+  const statuses = leaves.map((l) => (typeof l === 'string' ? l : l.status));
   if (statuses.includes(PLAN_STATUS.FAILED)) return PLAN_STATUS.FAILED;
   if (statuses.includes(PLAN_STATUS.AWAITING_APPROVAL)) return PLAN_STATUS.AWAITING_APPROVAL;
   if (statuses.includes(PLAN_STATUS.RECOVERING)) return PLAN_STATUS.RECOVERING;

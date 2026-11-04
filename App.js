@@ -342,6 +342,9 @@ function AppShell() {
             <PlanScreen
               planId={activePlanId}
               onClose={handleClosePlan}
+              onOpenPlan={handleOpenPlan}
+              onOpenBrowser={handleOpenBrowser}
+              browserFrame={frameBase64}
               onApproveStep={(step, stepPlanId) => approvePlanStep(step, stepPlanId || activePlanId)}
               onRejectStep={(step, stepPlanId) => rejectPlanStep(step, stepPlanId || activePlanId)}
               onCancelPlan={handleCancelPlan}

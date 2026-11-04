@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import { AppIconTile } from '../ui/icons';
 import { Ionicons } from '@expo/vector-icons';
 import { CircleButton, ZaoAvatar, AllowButton, DenyButton, GlassFill, glassSurface, haptic } from '../ui/ios';
 import BrowserCard, { BrowserMiniIndicator } from '../components/BrowserCard';
@@ -179,7 +180,7 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
     <View style={[styles.confirmCard, glassSurface(theme, 20)]}>
       <GlassFill theme={theme} radius={20} strong />
       <View style={styles.confirmCardHeader}>
-        <Ionicons name="shield-checkmark-outline" size={16} color={theme.brand} />
+        <AppIconTile k={parsed.toolName} size={22} />
         <Text style={[styles.confirmCardTitle, { color: theme.textPrimary }]}>Needs your approval</Text>
       </View>
       <Text style={[styles.confirmCardReason, { color: theme.textSecondary }]}>
