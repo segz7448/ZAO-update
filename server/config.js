@@ -119,6 +119,14 @@ module.exports = {
   SANDBOX_CPU_LIMIT: process.env.ZAO_SANDBOX_CPU_LIMIT || '1.5',
   SANDBOX_PIDS_LIMIT: process.env.ZAO_SANDBOX_PIDS_LIMIT || '256',
 
+  // --- Billing / usage placeholders (no real payment backend yet) ---
+  BILLING_WEEKLY_REQUEST_LIMIT: Number(process.env.ZAO_BILLING_WEEKLY_REQUEST_LIMIT || 100),
+  BILLING_PLAN_ID: process.env.ZAO_BILLING_PLAN_ID || 'pro',
+  BILLING_PLAN_NAME: process.env.ZAO_BILLING_PLAN_NAME || 'Pro',
+  BILLING_PLAN_PRICE_LABEL: process.env.ZAO_BILLING_PLAN_PRICE_LABEL || '',
+  BILLING_PLAN_PERIOD: process.env.ZAO_BILLING_PLAN_PERIOD || 'month',
+  BILLING_PLAN_STATUS: process.env.ZAO_BILLING_PLAN_STATUS || 'active',
+
   // Python command used for OCR (see ocr.js / scripts/ocr_extract.py).
   // Same "just a PATH command" approach as TERMINAL_SHELL - if you have
   // multiple Python installs, point this at whichever one has

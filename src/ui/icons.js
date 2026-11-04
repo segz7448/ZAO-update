@@ -54,6 +54,7 @@ export const AREA_ICONS = {
   // Settings rows — real iOS Settings-style glyphs
   appearance: { glyph: 'contrast', family: I, color: '#5856D6', label: 'Appearance' },
   usage: { glyph: 'stats-chart', family: I, color: '#34C759', label: 'Usage' },
+  subscription: { glyph: 'card', family: I, color: '#AF52DE', label: 'Subscription' },
   connectors: { glyph: 'extension-puzzle', family: I, color: '#007AFF', label: 'Connectors' },
   vpn: { glyph: 'shield', family: I, color: '#30D158', label: 'VPN' },
   vault: { glyph: 'lock-closed', family: I, color: '#FF9F0A', label: 'Vault' },
@@ -62,6 +63,11 @@ export const AREA_ICONS = {
   appearance_auto: { glyph: 'contrast', family: I, color: '#5856D6', label: 'Auto' },
   appearance_light: { glyph: 'sunny', family: I, color: '#FF9500', label: 'Light' },
   appearance_dark: { glyph: 'moon', family: I, color: '#8E8E93', label: 'Dark' },
+  account: { glyph: 'person', family: I, color: '#8E8E93', label: 'Account' },
+  remember: { glyph: 'sparkles', family: I, color: '#AF52DE', label: 'Remember' },
+  messages: { glyph: 'chatbubbles', family: I, color: '#007AFF', label: 'Messages' },
+  tool_calls: { glyph: 'construct', family: I, color: '#5856D6', label: 'Tool calls' },
+  openrouter_credits: { brand: 'openrouter', color: '#94A3B8', label: 'OpenRouter' },
 
   // Vault item types — glyphs only, never letters
   vault_login: { glyph: 'globe', family: I, color: '#007AFF', label: 'Login' },

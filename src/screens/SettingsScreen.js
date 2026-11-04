@@ -23,7 +23,7 @@ import { PluginsHub } from '../components/settings/PluginsHub';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
-import { checkBackendHealth } from '../services/backend/backendClient';
+import { checkBackendHealth, testOpenRouterKey } from '../services/backend/backendClient';
 import {
   getUsageCounts,
   getRecentUsageEvents,
@@ -35,11 +35,210 @@ import {
   getRecentCheckpoints,
 } from '../db/database';
 import { ACTIVE_MODEL } from '../config/localModels';
+import {
+  getWeeklyUsage,
+  getSubscription,
+  getUsageManagePrefs,
+  setSoftLimitEnabled,
+  setAlertPercent,
+} from '../billing';
 import { rewindToCheckpoint } from '../services/filesystem/filesystemTool';
 import { getRecentSpans } from '../services/execution/telemetry';
 import { PERMISSION_MODES } from '../services/execution/permissionModes';
 import { listReminders, cancelReminder, forgetReminder } from '../services/reminders/reminderService';
-import { migrateGithubTokenIntoVault } from '../vault/vaultService';
+import { migrateGithubTokenIntoVault, getVaultSecuritySummary } from '../vault/vaultService';
+import { listInstalledPlugins } from '../plugins/pluginService';
+import { vpn } from '../vpn';
+
+
+/** Resolve the Settings account display name from prefs / memory — never hard-code. */
+function resolveProfileName(preferences, memories = []) {
+  const fromPrefs = preferences?.display_name || preferences?.user_name;
+  if (fromPrefs && String(fromPrefs).trim()) return String(fromPrefs).trim();
+  for (const m of memories || []) {
+    const cat = String(m.category || '').toLowerCase();
+    const content = String(m.content || '');
+    if (cat === 'name' || cat === 'profile' || cat === 'identity') {
+      const m1 = content.match(/(?:my name is|i(?:'m| am)|call me)\s+([A-Z][A-Za-z'-]{1,40})/i);
+      if (m1) return m1[1];
+      if (/^[A-Z][A-Za-z'-]{1,40}$/.test(content.trim())) return content.trim();
+    }
+    const m2 = content.match(/(?:my name is|i(?:'m| am)|call me)\s+([A-Z][A-Za-z'-]{1,40})/i);
+    if (m2) return m2[1];
+  }
+  if (preferences?.github_username) return preferences.github_username;
+  return 'Account';
+}
+
+function buildAccountSubtitle(preferences, { vaultItems = 0, plugins = 0, vpnOn = false } = {}) {
+  const bits = [];
+  if (preferences?.github_username) bits.push('GitHub');
+  if (vaultItems > 0) bits.push('Vault');
+  if (preferences?.memory_enabled !== false) bits.push('memory');
+  if (!bits.length) {
+    if (plugins) bits.push('Plugins');
+    if (vpnOn) bits.push('VPN');
+  }
+  if (!bits.length) return 'Profile & connected accounts';
+  if (bits.length === 1) return bits[0];
+  if (bits.length === 2) return `${bits[0]} & ${bits[1]}`;
+  return `${bits.slice(0, -1).join(', ')} & ${bits[bits.length - 1]}`;
+}
+
+
+function AccountSheet({ visible, onClose, theme, preferences, profileName, subtitle }) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+        <View style={styles.modalHeader}>
+          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Account</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={24} color={theme.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible', alignItems: 'center', paddingVertical: 20 }]}>
+            <GlassFill theme={theme} radius={10} />
+            <AppIconTile k="account" size={64} />
+            <Text style={{ marginTop: 12, fontSize: 22, fontWeight: '700', color: theme.textPrimary }}>{profileName}</Text>
+            <Text style={{ marginTop: 4, fontSize: 14, color: theme.textSecondary }}>{subtitle}</Text>
+          </View>
+
+          <SectionHeader title="Profile" theme={theme} />
+          <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+            <GlassFill theme={theme} radius={10} />
+            <View style={styles.navRow}>
+              <AppIconTile k="account" size={30} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Name</Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary }}>{profileName}</Text>
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <View style={styles.navRow}>
+              <AppIconTile k="github" size={30} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>GitHub</Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary }}>
+                  {preferences?.github_username || 'Not connected'}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <View style={styles.navRow}>
+              <AppIconTile k="memory" size={30} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Memory</Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary }}>
+                  {preferences?.memory_enabled !== false ? 'On' : 'Off'}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <View style={styles.navRow}>
+              <AppIconTile k="server" size={30} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Backend</Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary }}>
+                  {preferences?.backend_vm_url ? 'Configured' : 'Not set'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <SectionHeader title="Session" theme={theme} />
+          <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+            <GlassFill theme={theme} radius={10} />
+            <TouchableOpacity style={styles.navRow} onPress={() => { /* placeholder */ }} disabled>
+              <AppIconTile k="permissions" size={30} />
+              <Text style={[styles.navRowLabel, { color: theme.textSecondary, flex: 1 }]}>Sign out</Text>
+              <Text style={{ fontSize: 13, color: theme.textTertiary }}>Coming soon</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+
+function SettingsNavRow({ theme, iconKey, label, onPress, value, showIcon = true }) {
+  return (
+    <TouchableOpacity
+      style={styles.navRow}
+      onPress={() => { haptic.light(); onPress?.(); }}
+    >
+      {showIcon && iconKey ? <AppIconTile k={iconKey} size={30} /> : null}
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary, flex: 1 }]}>{label}</Text>
+      {value ? (
+        <Text style={[styles.navRowValue, { color: theme.textSecondary }]} numberOfLines={1}>{value}</Text>
+      ) : null}
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  );
+}
+
+function formatRenewsAt(ms) {
+  if (!ms) return '—';
+  try {
+    return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch (_) {
+    return '—';
+  }
+}
+
+function priceDisplay(sub) {
+  if (sub?.priceLabel) {
+    const period = sub.period ? `/${sub.period}` : '';
+    return `${sub.priceLabel}${period}`;
+  }
+  return 'Set in server config';
+}
+
+/** Settings home USAGE group: Usage + optional Subscription rows (no sparkline / counts). */
+function UsageGroupCard({ theme, onOpenUsage, onOpenSubscription }) {
+  const [usageTrail, setUsageTrail] = useState('…');
+  const [planTrail, setPlanTrail] = useState('Pro');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [usage, sub] = await Promise.all([getWeeklyUsage(), getSubscription()]);
+        if (cancelled) return;
+        setUsageTrail(`${usage.percent}% this week`);
+        setPlanTrail(sub.plan || 'Pro');
+      } catch (_) {
+        if (!cancelled) {
+          setUsageTrail('—');
+          setPlanTrail('Pro');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+      <GlassFill theme={theme} radius={10} />
+      <SettingsNavRow
+        theme={theme}
+        iconKey="usage"
+        label="Usage"
+        value={usageTrail}
+        onPress={onOpenUsage}
+      />
+      <View style={[styles.divider, { backgroundColor: theme.border }]} />
+      <SettingsNavRow
+        theme={theme}
+        iconKey="subscription"
+        label="Subscription"
+        value={planTrail}
+        onPress={onOpenSubscription}
+      />
+    </View>
+  );
+}
 
 function GithubCredentialsSection({ status, onSaveUsername, onSaveToken, onRemove, theme }) {
   const [usernameValue, setUsernameValue] = useState(status.username || '');
@@ -632,7 +831,7 @@ function BackendConnectionSection({ preferences, theme }) {
   );
 }
 
-function MemorySection({ preferences, onToggle, theme }) {
+function MemorySection({ preferences, onToggle, theme, compact = false }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -723,8 +922,14 @@ function MemorySection({ preferences, onToggle, theme }) {
     );
   };
 
-  return (
-    <View style={styles.keyRow}>
+  const chrome = compact ? (
+    <TouchableOpacity style={styles.navRow} onPress={() => { haptic.light(); openModal(); }}>
+      <AppIconTile k="memory" size={30} />
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Memory</Text>
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  ) : (
+    <>
       <View style={styles.keyRowHeader}>
         <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Remember things about me</Text>
         <Switch
@@ -742,6 +947,12 @@ function MemorySection({ preferences, onToggle, theme }) {
       <TouchableOpacity style={[styles.keyEditBtn, { marginTop: 12 }]} onPress={openModal}>
         <Text style={[styles.keyEditBtnText, { color: theme.info }]}>Manage memories</Text>
       </TouchableOpacity>
+    </>
+  );
+
+  return (
+    <View style={compact ? undefined : styles.keyRow}>
+      {chrome}
 
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: 56 }}>
@@ -860,7 +1071,7 @@ function MemorySection({ preferences, onToggle, theme }) {
  * a summary row + "Manage" opens a modal list - since this is the same
  * kind of "let the person see and edit ZAO's own persisted state" screen.
  */
-function RemindersSection({ theme }) {
+function RemindersSection({ theme, compact = false }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -896,8 +1107,15 @@ function RemindersSection({ theme }) {
     failed: { label: 'Failed to schedule', color: theme.dangerText },
   };
 
-  return (
-    <View style={styles.keyRow}>
+  const chrome = compact ? (
+    <TouchableOpacity style={styles.navRow} onPress={() => { haptic.light(); openModal(); }}>
+      <AppIconTile k="reminders" size={30} />
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Reminders</Text>
+      {activeCount > 0 ? <Text style={{ fontSize: 15, color: theme.textSecondary }}>{activeCount}</Text> : null}
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  ) : (
+    <>
       <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Reminders</Text>
       <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 4 }]}>
         Anything ZAO has scheduled to remind you about later, kept in ZAO's own records - inspectable and cancelable here even if the system notification never fires.
@@ -907,6 +1125,12 @@ function RemindersSection({ theme }) {
           Manage reminders{activeCount > 0 ? ` (${activeCount} active)` : ''}
         </Text>
       </TouchableOpacity>
+    </>
+  );
+
+  return (
+    <View style={compact ? undefined : styles.keyRow}>
+      {chrome}
 
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: 56 }}>
@@ -992,7 +1216,28 @@ function PermissionModeSection({ preferences, onSetMode, theme }) {
   );
 }
 
-function CheckpointsSection({ theme }) {
+function PermissionModeSheet({ visible, onClose, preferences, onSetMode, theme }) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+        <View style={styles.modalHeader}>
+          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Permission Mode</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={24} color={theme.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
+            <GlassFill theme={theme} radius={10} />
+            <PermissionModeSection preferences={preferences} onSetMode={onSetMode} theme={theme} />
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+function CheckpointsSection({ theme, compact = false }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [checkpoints, setCheckpoints] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1032,14 +1277,26 @@ function CheckpointsSection({ theme }) {
     );
   };
 
-  return (
-    <View style={styles.keyRow}>
+  const chrome = compact ? (
+    <TouchableOpacity style={styles.navRow} onPress={() => { haptic.light(); openModal(); }}>
+      <AppIconTile k="checkpoint" size={30} />
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Checkpoints</Text>
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  ) : (
+    <>
       <Text style={[styles.helperText, { color: theme.textSecondary }]}>
         Every file edit ZAO makes is snapshotted first, so you can undo it later even without git.
       </Text>
       <TouchableOpacity style={[styles.keyEditBtn, { marginTop: 12 }]} onPress={openModal}>
         <Text style={[styles.keyEditBtnText, { color: theme.info }]}>View recent checkpoints</Text>
       </TouchableOpacity>
+    </>
+  );
+
+  return (
+    <View style={compact ? undefined : styles.keyRow}>
+      {chrome}
 
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: 56 }}>
@@ -1294,7 +1551,7 @@ function WorktreesSection({ theme }) {
   );
 }
 
-function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
+function AuditTrailSection({ preferences, onSetOtelEndpoint, theme, compact = false }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [spans, setSpans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1302,10 +1559,19 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
   const [activityQuery, setActivityQuery] = useState('');
   const [activityStatus, setActivityStatus] = useState('all');
 
+  const [usageEvents, setUsageEvents] = useState([]);
+  const [usageCounts, setUsageCounts] = useState({});
+
   const load = async () => {
     setLoading(true);
-    const result = await getRecentSpans(100);
+    const [result, eventsResult, countsResult] = await Promise.all([
+      getRecentSpans(100),
+      getRecentUsageEvents(20),
+      getUsageCounts(0),
+    ]);
     setSpans(result || []);
+    setUsageEvents(eventsResult?.data || []);
+    setUsageCounts(countsResult?.data || {});
     setLoading(false);
   };
 
@@ -1322,8 +1588,14 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
     await load();
   };
 
-  return (
-    <View style={styles.keyRow}>
+  const chrome = compact ? (
+    <TouchableOpacity style={styles.navRow} onPress={() => { haptic.light(); openModal(); }}>
+      <AppIconTile k="activity" size={30} />
+      <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Agent Activity</Text>
+      <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+    </TouchableOpacity>
+  ) : (
+    <>
       <Text style={[styles.helperText, { color: theme.textSecondary }]}>
         A record of every tool call ZAO makes - what ran, with what, and whether it succeeded. Local-only unless you set an export endpoint below.
       </Text>
@@ -1344,6 +1616,12 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
           style={[styles.keyInput, { color: theme.textPrimary, borderColor: theme.border }]}
         />
       </View>
+    </>
+  );
+
+  return (
+    <View style={compact ? undefined : styles.keyRow}>
+      {chrome}
 
       <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: 56 }}>
@@ -1380,14 +1658,63 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
               })}
             </View>
           </View>
+
+          {(!loading) ? (
+            <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textTertiary, textTransform: 'uppercase', marginBottom: 8 }}>
+                Developer usage
+              </Text>
+              <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible', marginBottom: 10 }]}>
+                <GlassFill theme={theme} radius={10} />
+                <View style={styles.usageRow}>
+                  <Text style={[styles.usageRowLabel, { color: theme.textPrimary }]}>Browser sessions</Text>
+                  <Text style={[styles.usageRowValue, { color: theme.textSecondary }]}>{usageCounts.browser_session || 0}</Text>
+                </View>
+                <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                <View style={styles.usageRow}>
+                  <Text style={[styles.usageRowLabel, { color: theme.textPrimary }]}>GitHub pushes</Text>
+                  <Text style={[styles.usageRowValue, { color: theme.textSecondary }]}>{usageCounts.github_push || 0}</Text>
+                </View>
+                <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                <View style={styles.usageRow}>
+                  <Text style={[styles.usageRowLabel, { color: theme.textPrimary }]}>Files / repos</Text>
+                  <Text style={[styles.usageRowValue, { color: theme.textSecondary }]}>
+                    {(usageCounts.file_created || 0) + (usageCounts.github_repo_created || 0)}
+                  </Text>
+                </View>
+              </View>
+              {usageEvents.length > 0 ? (
+                <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible', marginBottom: 8 }]}>
+                  <GlassFill theme={theme} radius={10} />
+                  <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 6, paddingHorizontal: 12, paddingTop: 10 }]}>
+                    Recent usage_log events
+                  </Text>
+                  {usageEvents.slice(0, 8).map((event) => (
+                    <View key={event.id} style={[styles.usageEventRow, { paddingHorizontal: 12 }]}>
+                      <Text style={[styles.usageEventType, { color: theme.info }]}>{event.event_type}</Text>
+                      {event.detail ? (
+                        <Text style={[styles.helperText, { color: theme.textPrimary }]} numberOfLines={1}>{event.detail}</Text>
+                      ) : null}
+                      <Text style={[styles.helperText, { color: theme.textTertiary }]}>
+                        {new Date(event.created_at).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 13, fontWeight: '700', color: theme.textTertiary, textTransform: 'uppercase', marginTop: 4, marginBottom: 4 }}>
+                Tool spans
+              </Text>
+            </View>
+          ) : null}
           {loading ? (
             <ActivityIndicator size="large" color={theme.info} style={{ marginTop: 40 }} />
           ) : spans.length === 0 ? (
-            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 12, paddingHorizontal: 20 }}>
               Nothing logged yet - this fills in as ZAO makes tool calls.
             </Text>
           ) : filteredSpans.length === 0 ? (
-            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }}>
+            <Text style={{ color: theme.textSecondary, textAlign: 'center', marginTop: 12, paddingHorizontal: 20 }}>
               No activity matches this filter.
             </Text>
           ) : (
@@ -1536,42 +1863,136 @@ function RadioOption({ label, subtitle, selected, onPress, theme, iconKey }) {
   );
 }
 
-function UsageModal({ visible, onClose, theme }) {
-  const [loading, setLoading] = useState(true);
-  const [counts, setCounts] = useState({});
-  const [backendStatus, setBackendStatus] = useState({ connected: false, ready: false, model: null });
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [devModeExpanded, setDevModeExpanded] = useState(false);
+function ManageUsageSheet({ visible, onClose, theme }) {
+  const [softLimit, setSoftLimit] = useState(false);
+  const [alertPercent, setAlertPct] = useState(80);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     (async () => {
+      const prefs = await getUsageManagePrefs();
+      setSoftLimit(!!prefs.softLimitEnabled);
+      setAlertPct(prefs.alertPercent || 80);
+      setLoaded(true);
+    })();
+  }, [visible]);
+
+  const toggleSoft = async (v) => {
+    haptic.select();
+    setSoftLimit(v);
+    await setSoftLimitEnabled(v);
+  };
+
+  const bumpAlert = async (delta) => {
+    const next = Math.max(10, Math.min(100, (alertPercent || 80) + delta));
+    setAlertPct(next);
+    await setAlertPercent(next);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' }}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.card, glassSurface(theme, 16), { margin: 12, marginBottom: 28, overflow: 'visible', paddingBottom: 8 }]}>
+          <GlassFill theme={theme} radius={16} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+            <Text style={{ flex: 1, fontSize: 17, fontWeight: '700', color: theme.textPrimary }}>Manage usage</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <Ionicons name="close" size={22} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          {!loaded ? (
+            <ActivityIndicator style={{ margin: 24 }} color={theme.textTertiary} />
+          ) : (
+            <>
+              <View style={[styles.navRow, { paddingHorizontal: 16 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Soft limit alerts</Text>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
+                    Notify when weekly usage crosses your threshold
+                  </Text>
+                </View>
+                <Switch
+                  value={softLimit}
+                  onValueChange={toggleSoft}
+                  trackColor={{ false: theme.fill, true: theme.switchTrack }}
+                  ios_backgroundColor={theme.fill}
+                />
+              </View>
+              <View style={[styles.divider, { backgroundColor: theme.border, marginHorizontal: 16 }]} />
+              <View style={{ paddingHorizontal: 16, paddingVertical: 14, opacity: softLimit ? 1 : 0.45 }}>
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Alert threshold</Text>
+                <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2, marginBottom: 10 }}>
+                  Soft ceiling — does not hard-block requests
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => softLimit && bumpAlert(-5)}
+                    disabled={!softLimit}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.fill, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="remove" size={20} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 22, fontWeight: '700', color: theme.textPrimary, minWidth: 64, textAlign: 'center' }}>
+                    {alertPercent}%
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => softLimit && bumpAlert(5)}
+                    disabled={!softLimit}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.fill, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="add" size={20} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function UsageModal({ visible, onClose, theme, focus = 'usage' }) {
+  const [loading, setLoading] = useState(true);
+  const [usage, setUsage] = useState({ percent: 0, resetsInDays: 7 });
+  const [sub, setSub] = useState({ plan: 'Pro', priceLabel: null, period: 'month', renewsAt: null });
+  const [manageOpen, setManageOpen] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    setManageOpen(false);
+    (async () => {
       setLoading(true);
       try {
-        const [countsResult, recentResult, backendResult] = await Promise.all([
-          getUsageCounts(),
-          getRecentUsageEvents(15),
-          checkBackendHealth(),
-        ]);
-        setCounts(countsResult.data || {});
-        setRecentEvents(recentResult.data || []);
-        setBackendStatus(backendResult);
+        const [u, s] = await Promise.all([getWeeklyUsage(), getSubscription()]);
+        setUsage(u);
+        setSub(s);
       } finally {
         setLoading(false);
       }
     })();
   }, [visible]);
 
-  const totalFileEvents = (counts.file_created || 0) + (counts.github_push || 0);
+  const pct = Math.max(0, Math.min(100, Number(usage.percent) || 0));
+  const resetsLabel = `Resets in ${usage.resetsInDays ?? 7} day${(usage.resetsInDays ?? 7) === 1 ? '' : 's'}`;
+  const barColor = theme.info || theme.brand || '#0A84FF';
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Usage</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={24} color={theme.textPrimary} />
+        <View style={styles.usageScreenHeader}>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={12}
+            style={[styles.usageBackBtn, { backgroundColor: theme.fill || theme.surfaceAlt }]}
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={theme.textPrimary} />
           </TouchableOpacity>
+          <Text style={[styles.usageScreenTitle, { color: theme.textPrimary }]}>Usage</Text>
+          <View style={{ width: 36 }} />
         </View>
 
         {loading ? (
@@ -1579,77 +2000,67 @@ function UsageModal({ visible, onClose, theme }) {
             <ActivityIndicator size="small" color={theme.textTertiary} />
           </View>
         ) : (
-          <ScrollView style={styles.container}>
-            <SectionHeader title="Backend" theme={theme} />
-            <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-              <View style={styles.usageHealthRow}>
-                <View style={[styles.healthDot, { backgroundColor: backendStatus.ready ? theme.success : backendStatus.connected ? theme.warning : theme.danger }]} />
-                <Text style={[styles.usageRowLabel, { color: theme.textPrimary, flex: 1 }]}>{ACTIVE_MODEL.label}</Text>
-                <Text style={[styles.helperText, { color: theme.textTertiary }]}>
-                  {backendStatus.ready ? 'Ready' : backendStatus.connected ? 'Loading' : 'Not connected'}
+          <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+            <View style={[styles.card, glassSurface(theme, 14), { overflow: 'visible', marginTop: 8 }]}>
+              <GlassFill theme={theme} radius={14} />
+              <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: theme.textPrimary }}>Weekly usage limit</Text>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary }}>{resetsLabel}</Text>
+                </View>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.fill || theme.border, overflow: 'hidden' }}>
+                  <View style={{ width: `${pct}%`, height: '100%', borderRadius: 4, backgroundColor: barColor }} />
+                </View>
+                <Text style={{ fontSize: 14, color: theme.textSecondary, marginTop: 8 }}>{pct}%</Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                style={styles.navRow}
+                onPress={() => { haptic.light(); setManageOpen(true); }}
+              >
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary, flex: 1 }]}>Manage usage</Text>
+                <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+              </TouchableOpacity>
+            </View>
+
+            <SectionHeader title="Subscription" theme={theme} />
+            <View style={[styles.card, glassSurface(theme, 14), { overflow: 'visible' }]}>
+              <GlassFill theme={theme} radius={14} />
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 6 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: theme.textPrimary }}>{sub.plan || 'Pro'}</Text>
+                <Text style={{ fontSize: 14, color: theme.textSecondary }}>{priceDisplay(sub)}</Text>
+                <Text style={{ fontSize: 13, color: theme.textTertiary }}>
+                  Renews {formatRenewsAt(sub.renewsAt)}
+                  {sub.placeholder ? ' · placeholder' : ''}
                 </Text>
               </View>
-              <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 8 }]}>
-                Chat completions go through your private backend using your own OpenRouter key. Usage below counts local agent activity (browser, GitHub, files).
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                style={styles.navRow}
+                onPress={() => Alert.alert('Manage subscription', 'Billing is not connected yet. Plan and price come from server config placeholders (ZAO_BILLING_PLAN_*).')}
+              >
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary, flex: 1 }]}>Manage subscription</Text>
+                <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+              </TouchableOpacity>
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                style={styles.navRow}
+                onPress={() => Alert.alert('Change plan', 'No payment backend yet. Set ZAO_BILLING_PLAN_NAME / ZAO_BILLING_PLAN_PRICE_LABEL on the server to update this stub.')}
+              >
+                <Text style={[styles.navRowLabel, { color: theme.textPrimary, flex: 1 }]}>Change plan</Text>
+                <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+              </TouchableOpacity>
+            </View>
+            {focus === 'subscription' ? (
+              <Text style={[styles.helperText, { color: theme.textTertiary, marginHorizontal: 20, marginTop: 8 }]}>
+                Example data until a billing provider is wired.
               </Text>
-            </View>
-
-            <SectionHeader title="Activity" theme={theme} />
-            <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-              <UsageRow label="Browser sessions" value={counts.browser_session || 0} theme={theme} />
-              <UsageRow label="GitHub pushes" value={counts.github_push || 0} theme={theme} />
-              <UsageRow label="Repos created" value={counts.github_repo_created || 0} theme={theme} />
-              <UsageRow label="Files created" value={totalFileEvents} theme={theme} last />
-            </View>
-
-
-            <TouchableOpacity
-              style={[styles.card, glassSurface(theme, 10), { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              onPress={() => setDevModeExpanded((v) => !v)}
-            >
-                <GlassFill theme={theme} radius={10} />
-              <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>Developer Mode</Text>
-              <Ionicons name={devModeExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.textSecondary} />
-            </TouchableOpacity>
-
-            {devModeExpanded && (
-              <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
-        <GlassFill theme={theme} radius={10} />
-                <Text style={[styles.helperText, { color: theme.textSecondary, marginBottom: 8 }]}>
-                  Most recent tool/model calls, newest first:
-                </Text>
-                {recentEvents.length === 0 ? (
-                  <Text style={[styles.helperText, { color: theme.textSecondary }]}>Nothing logged yet.</Text>
-                ) : (
-                  recentEvents.map((event) => (
-                    <View key={event.id} style={styles.usageEventRow}>
-                      <Text style={[styles.usageEventType, { color: theme.info }]}>{event.event_type}</Text>
-                      {event.detail ? (
-                        <Text style={[styles.helperText, { color: theme.textPrimary }]} numberOfLines={1}>{event.detail}</Text>
-                      ) : null}
-                      <Text style={[styles.helperText, { color: theme.textTertiary }]}>
-                        {new Date(event.created_at).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            )}
+            ) : null}
           </ScrollView>
         )}
       </View>
+      <ManageUsageSheet visible={manageOpen} onClose={() => setManageOpen(false)} theme={theme} />
     </Modal>
-  );
-}
-
-function UsageRow({ label, value, theme, last = false }) {
-  return (
-    <View style={[styles.usageRow, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border }]}>
-      <Text style={[styles.usageRowLabel, { color: theme.textPrimary }]}>{label}</Text>
-      <Text style={[styles.usageRowValue, { color: theme.textSecondary }]}>{value}</Text>
-    </View>
   );
 }
 
@@ -1662,10 +2073,21 @@ export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
   const { themePreference, loadThemePreference, setThemePreference } = useThemeStore();
 
   const [usageModalVisible, setUsageModalVisible] = useState(false);
+  const [usageFocus, setUsageFocus] = useState('usage');
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vpnOpen, setVpnOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [permOpen, setPermOpen] = useState(false);
+  const [profileName, setProfileName] = useState('Account');
+  const [accountSubtitle, setAccountSubtitle] = useState('Profile & connected accounts');
+  const [integTrail, setIntegTrail] = useState({
+    connectors: 'None',
+    plugins: '0 installed',
+    vault: '0 items',
+    vpn: 'Off',
+  });
 
   useEffect(() => {
     loadPreferences();
@@ -1673,17 +2095,74 @@ export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
     migrateGithubTokenIntoVault(preferences?.github_username).catch(() => {});
   }, []);
 
-  const NavRow = ({ iconKey, label, onPress, detail }) => (
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const memResult = await getAllMemories();
+      const memories = memResult.success ? (memResult.data || []).filter((m) => m.is_active) : [];
+      let vaultItems = 0;
+      let pluginCount = 0;
+      let vpnLabel = 'Off';
+      let vpnOn = false;
+      try {
+        const vault = await getVaultSecuritySummary();
+        vaultItems = vault?.data?.total || 0;
+      } catch (_) {}
+      try {
+        const plugs = await listInstalledPlugins();
+        pluginCount = (plugs?.data || []).length;
+      } catch (_) {}
+      try {
+        const st = await vpn.status();
+        const active = st?.data?.active || st?.active || null;
+        if (active?.country || active?.countryCode) {
+          vpnLabel = active.countryCode || active.country;
+          vpnOn = true;
+        } else if (active?.city) {
+          vpnLabel = active.city;
+          vpnOn = true;
+        }
+      } catch (_) {}
+      if (cancelled) return;
+      const name = resolveProfileName(preferences, memories);
+      setProfileName(name);
+      setAccountSubtitle(buildAccountSubtitle(preferences, { vaultItems, plugins: pluginCount, vpnOn }));
+      const connectorBits = [];
+      if (preferences?.github_username) connectorBits.push('GitHub');
+      setIntegTrail({
+        connectors: connectorBits.length ? connectorBits.join(', ') : 'None',
+        plugins: `${pluginCount} installed`,
+        vault: `${vaultItems} item${vaultItems === 1 ? '' : 's'}`,
+        vpn: vpnLabel,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [
+    preferences?.github_username,
+    preferences?.memory_enabled,
+    preferences?.openrouter_api_key,
+    preferences?.backend_vm_url,
+    preferences?.display_name,
+    preferences?.user_name,
+  ]);
+
+  const NavRow = ({ iconKey, label, onPress, value }) => (
     <TouchableOpacity
       style={styles.navRow}
       onPress={() => { haptic.light(); onPress?.(); }}
     >
       <AppIconTile k={iconKey} size={30} />
       <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>{label}</Text>
-      {detail ? <StatusPill theme={theme} tone="neutral" label={detail} /> : null}
+      {value ? (
+        <Text style={[styles.navRowValue, { color: theme.textSecondary }]} numberOfLines={1}>{value}</Text>
+      ) : null}
       <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
     </TouchableOpacity>
   );
+
+  const permLabel = PERMISSION_MODE_INFO[preferences?.permission_mode || 'auto']?.label
+    || PERMISSION_MODE_INFO.auto.label;
+  const memoryEnabled = preferences?.memory_enabled !== false;
 
   return (
     <>
@@ -1705,12 +2184,36 @@ export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
       </View>
       <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
 
-      <SectionHeader title="General" theme={theme} />
+      <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible', marginTop: 8 }]}>
+        <GlassFill theme={theme} radius={10} />
+        <TouchableOpacity
+          style={styles.accountRow}
+          onPress={() => { haptic.light(); setAccountOpen(true); }}
+        >
+          <AppIconTile k="account" size={44} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.accountName, { color: theme.textPrimary }]}>{profileName}</Text>
+            <Text style={[styles.accountSub, { color: theme.textSecondary }]} numberOfLines={1}>
+              {accountSubtitle}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={17} color={theme.chevron} />
+        </TouchableOpacity>
+      </View>
+
+      <SectionHeader title="Usage" theme={theme} />
+      <UsageGroupCard
+        theme={theme}
+        onOpenUsage={() => { setUsageFocus('usage'); setUsageModalVisible(true); }}
+        onOpenSubscription={() => { setUsageFocus('subscription'); setUsageModalVisible(true); }}
+      />
+
+      <SectionHeader title="Appearance" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
         <RadioOption
           label="Auto"
-          subtitle="Follows your phone's system setting"
+          subtitle="Follows your phone's setting"
           selected={themePreference === 'auto'}
           onPress={() => setThemePreference('auto')}
           theme={theme}
@@ -1732,40 +2235,65 @@ export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
           theme={theme}
           iconKey="appearance_dark"
         />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <NavRow iconKey="usage" label="Usage & Activity" onPress={() => setUsageModalVisible(true)} />
       </View>
 
       <SectionHeader title="Integrations" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <NavRow iconKey="connectors" label="Connectors" onPress={() => setConnectorsOpen(true)} detail="Hub" />
+        <NavRow iconKey="connectors" label="Connectors" onPress={() => setConnectorsOpen(true)} value={integTrail.connectors} />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <NavRow iconKey="plugins" label="Plugins" onPress={() => setPluginsOpen(true)} detail="Hub" />
+        <NavRow iconKey="plugins" label="Plugins" onPress={() => setPluginsOpen(true)} value={integTrail.plugins} />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <NavRow iconKey="vault" label="Vault" onPress={() => setVaultOpen(true)} detail="Secure" />
+        <NavRow iconKey="vault" label="Vault" onPress={() => setVaultOpen(true)} value={integTrail.vault} />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <NavRow iconKey="vpn" label="VPN" onPress={() => setVpnOpen(true)} detail="Demo" />
+        <NavRow iconKey="vpn" label="VPN" onPress={() => setVpnOpen(true)} value={integTrail.vpn} />
       </View>
 
-      <SectionHeader title="Agent" theme={theme} />
+      <SectionHeader title="Intelligence" theme={theme} />
       <View style={[styles.card, glassSurface(theme, 10), { overflow: 'visible' }]}>
         <GlassFill theme={theme} radius={10} />
-        <PermissionModeSection preferences={preferences} onSetMode={setPermissionMode} theme={theme} />
+        <View style={styles.navRow}>
+          <AppIconTile k="remember" size={30} />
+          <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Remember things about me</Text>
+          <Switch
+            value={memoryEnabled}
+            onValueChange={(v) => { haptic.select(); setMemoryEnabled(v); }}
+            trackColor={{ false: theme.fill, true: theme.switchTrack }}
+            ios_backgroundColor={theme.fill}
+          />
+        </View>
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <MemorySection preferences={preferences} onToggle={setMemoryEnabled} theme={theme} />
+        <NavRow iconKey="permissions" label="Permission Mode" onPress={() => setPermOpen(true)} value={permLabel} />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <RemindersSection theme={theme} />
+        <MemorySection preferences={preferences} onToggle={setMemoryEnabled} theme={theme} compact />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <CheckpointsSection theme={theme} />
+        <RemindersSection theme={theme} compact />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <AuditTrailSection preferences={preferences} onSetOtelEndpoint={setOtelExportEndpoint} theme={theme} />
+        <CheckpointsSection theme={theme} compact />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <AuditTrailSection preferences={preferences} onSetOtelEndpoint={setOtelExportEndpoint} theme={theme} compact />
       </View>
     </ScrollView>
 
     <UsageModal
       visible={usageModalVisible}
       onClose={() => setUsageModalVisible(false)}
+      theme={theme}
+      focus={usageFocus}
+    />
+    <AccountSheet
+      visible={accountOpen}
+      onClose={() => setAccountOpen(false)}
+      theme={theme}
+      preferences={preferences}
+      profileName={profileName}
+      subtitle={accountSubtitle}
+    />
+    <PermissionModeSheet
+      visible={permOpen}
+      onClose={() => setPermOpen(false)}
+      preferences={preferences}
+      onSetMode={setPermissionMode}
       theme={theme}
     />
     <ConnectorsHub
@@ -1793,7 +2321,27 @@ export default function SettingsScreen({ onOpenSidebar, onGoChat }) {
   );
 }
 
+
 const styles = StyleSheet.create({
+    usageScreenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  usageBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  usageScreenTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
   usageLoadingBox: {
     flex: 1,
     justifyContent: 'center',
@@ -1897,6 +2445,29 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 17,
     letterSpacing: -0.41,
+  },
+  navRowValue: {
+    fontSize: 15,
+    color: '#8E8E93',
+    maxWidth: 120,
+    textAlign: 'right',
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  accountName: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.41,
+  },
+  accountSub: {
+    fontSize: 13,
+    marginTop: 2,
   },
   modeOption: {
     paddingVertical: 8,

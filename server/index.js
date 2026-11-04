@@ -55,6 +55,7 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const config = require('./config');
+const { registerBillingRoutes } = require('./billing');
 const { registerTerminalRoute } = require('./terminal');
 const { registerProcessRoutes } = require('./processManager');
 const { registerOcrRoute } = require('./ocr');
@@ -506,6 +507,7 @@ app.post('/v1/chat/completions', (req, res) => {
     const partTypes = lastMsg.content.map((p) => p.type).join(', ');
     log(`Outbound last message is multimodal - parts: [${partTypes}]`);
   }
+  try { app.locals.billing?.recordChatCompletion?.(); } catch (_) {}
   proxyToOpenRouter(req, res, '/chat/completions');
 });
 
@@ -517,6 +519,9 @@ registerWebFetchRoute(app, config, log);
 
 // VPN store — dedicated proxy IPs for agent traffic (demo provider by default)
 const vpnApi = registerVpnRoutes(app, { dataDir: path.join(__dirname, 'data'), authMiddleware: null });
+const billingApi = registerBillingRoutes(app, config, log, { dataDir: path.join(__dirname, 'data') });
+app.locals.billing = billingApi;
+
 app.locals.vpn = vpnApi;
 global.__zaoVpn = vpnApi;
 

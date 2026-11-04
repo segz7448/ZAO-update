@@ -1732,6 +1732,75 @@ export async function getRecentUsageEvents(limit = 20) {
   }
 }
 
+/**
+ * Per-day total usage_log event counts for the last `days` days (oldest → newest).
+ * Powers the Settings home usage sparkline.
+ */
+export async function getUsageDailyCounts(days = 7) {
+  try {
+    const db = await getDb();
+    if (!db) return { success: false, error: 'DB_OPEN_FAILED', data: [] };
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const since = startOfToday.getTime() - (days - 1) * dayMs;
+    const rows = await db.getAllAsync(
+      `SELECT created_at FROM usage_log WHERE created_at >= ?`,
+      [since]
+    );
+    const buckets = Array.from({ length: days }, () => 0);
+    for (const row of rows || []) {
+      const idx = Math.floor((Number(row.created_at) - since) / dayMs);
+      if (idx >= 0 && idx < days) buckets[idx] += 1;
+    }
+    return { success: true, data: buckets, error: null };
+  } catch (err) {
+    console.error('[DB] getUsageDailyCounts failed:', err);
+    return { success: false, error: err?.message || 'UNKNOWN_ERROR', data: [] };
+  }
+}
+
+/** Count messages (optionally filtered by role) created at/after `sinceTimestamp`. */
+export async function countMessagesSince(sinceTimestamp = 0, role = null) {
+  try {
+    const db = await getDb();
+    if (!db) return { success: false, error: 'DB_OPEN_FAILED', data: 0 };
+    let row;
+    if (role) {
+      row = await db.getFirstAsync(
+        `SELECT COUNT(*) as count FROM messages WHERE created_at >= ? AND role = ?`,
+        [sinceTimestamp, role]
+      );
+    } else {
+      row = await db.getFirstAsync(
+        `SELECT COUNT(*) as count FROM messages WHERE created_at >= ?`,
+        [sinceTimestamp]
+      );
+    }
+    return { success: true, data: Number(row?.count || 0), error: null };
+  } catch (err) {
+    console.error('[DB] countMessagesSince failed:', err);
+    return { success: false, error: err?.message || 'UNKNOWN_ERROR', data: 0 };
+  }
+}
+
+/** Count agent_actions (tool spans) started at/after `sinceTimestamp`. */
+export async function countAgentActionsSince(sinceTimestamp = 0) {
+  try {
+    const db = await getDb();
+    if (!db) return { success: false, error: 'DB_OPEN_FAILED', data: 0 };
+    const row = await db.getFirstAsync(
+      `SELECT COUNT(*) as count FROM agent_actions WHERE started_at >= ?`,
+      [sinceTimestamp]
+    );
+    return { success: true, data: Number(row?.count || 0), error: null };
+  } catch (err) {
+    console.error('[DB] countAgentActionsSince failed:', err);
+    return { success: false, error: err?.message || 'UNKNOWN_ERROR', data: 0 };
+  }
+}
+
 // ---------- User Preferences ----------
 
 const DEFAULT_PREFS_ROW = {

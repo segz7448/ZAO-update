@@ -95,7 +95,7 @@ export const lightTheme = {
   glassSelected: 'rgba(255,255,255,0.85)',
   userBubbleGlass: 'rgba(11,11,11,0.86)',
   userBubbleHighlight: 'rgba(255,255,255,0.18)',
-  ambientBase: '#F2F4FA',
+  ambientBase: '#EEE8F5',
 
   textPrimary: '#000000',
   textSecondary: '#636366',       // darkened for WCAG AA on glass (≈5.2:1)
@@ -176,7 +176,7 @@ export const darkTheme = {
   glassSelected: 'rgba(255,255,255,0.14)',
   userBubbleGlass: 'rgba(48,48,52,0.82)',
   userBubbleHighlight: 'rgba(255,255,255,0.14)',
-  ambientBase: '#08080C',
+  ambientBase: '#0B1220',
 
   textPrimary: '#FFFFFF',
   textSecondary: '#9A9A9E',
