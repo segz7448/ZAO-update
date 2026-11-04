@@ -91,3 +91,43 @@ describe('mergeBrowserCards', () => {
     expect(mergeBrowserCards(msgs, [], 'A')).toBe(msgs);
   });
 });
+
+import { historyEntry, appendHistory, formatStepTime, phaseLight, iconForAction, HISTORY_MAX } from '../browserCardState';
+
+describe('step history + status light', () => {
+  test('step events append real history rows with receive time', () => {
+    let c = card();
+    c = reduceCard(c, { type: 'step', step: 1, action: { action: 'navigate', url: 'https://trailhead.com/x' }, at: 1000 });
+    c = reduceCard(c, { type: 'step', step: 2, action: { action: 'click', zaoId: 'z3', label: 'Add to cart' }, at: 2000 });
+    expect(c.history).toEqual([
+      { n: 1, action: 'navigate', caption: 'Opening trailhead.com', at: 1000 },
+      { n: 2, action: 'click', caption: 'Clicking Add to cart', at: 2000 },
+    ]);
+  });
+  test('history is capped and immutable', () => {
+    const h = Array.from({ length: HISTORY_MAX }, (_, i) => ({ n: i }));
+    const next = appendHistory(h, { n: 'new' });
+    expect(next).toHaveLength(HISTORY_MAX);
+    expect(next[next.length - 1].n).toBe('new');
+    expect(h).toHaveLength(HISTORY_MAX);
+  });
+  test('historyEntry falls back to the count when step is missing', () => {
+    expect(historyEntry({ action: { action: 'goBack' } }, 7)).toEqual({ n: 7, action: 'goBack', caption: 'Going back', at: null });
+  });
+  test('formatStepTime', () => {
+    expect(formatStepTime(null)).toBe('');
+    expect(formatStepTime(10000, 12000)).toBe('now');
+    expect(formatStepTime(0, 30000)).toBe('30s ago');
+    expect(formatStepTime(0, 180000)).toBe('3m ago');
+  });
+  test('phaseLight colours', () => {
+    expect(phaseLight(CARD_PHASE.WORKING)).toEqual({ color: '#0A84FF', pulse: true });
+    expect(phaseLight(CARD_PHASE.PAUSED).color).toBe('#FFD60A');
+    expect(phaseLight(CARD_PHASE.DONE)).toEqual({ color: '#30D158', pulse: false });
+    expect(phaseLight(CARD_PHASE.PAUSED, { takeover: true }).pulse).toBe(false);
+  });
+  test('iconForAction', () => {
+    expect(iconForAction('needsHuman')).toBe('hand-left-outline');
+    expect(iconForAction('weird')).toBe('ellipsis-horizontal-circle-outline');
+  });
+});

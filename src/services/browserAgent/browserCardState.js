@@ -94,6 +94,7 @@ export function initialCard({ id, conversationId = null, anchorMessageId = null,
     answer: null,
     error: null,
     collapsed: false,
+    history: [], // recent step messages: { n, action, caption, at }
   };
 }
 
@@ -133,7 +134,7 @@ export function reduceCard(card, ev) {
     }
     case 'step':
       if (terminal) return card;
-      return { ...card, caption: captionForStep(ev), stepCount: card.stepCount + 1, phase: card.phase === CARD_PHASE.LIVE ? CARD_PHASE.WORKING : card.phase };
+      return { ...card, caption: captionForStep(ev), stepCount: card.stepCount + 1, history: appendHistory(card.history, historyEntry(ev, card.stepCount + 1)), phase: card.phase === CARD_PHASE.LIVE ? CARD_PHASE.WORKING : card.phase };
     case 'taskResult':
       if (terminal) return card;
       if (ev.needsHuman) return { ...card, phase: CARD_PHASE.PAUSED, caption: ev.reason ? `Needs you: ${trunc(ev.reason, 60)}` : 'Waiting for you to take over' };
@@ -180,4 +181,66 @@ export function mergeBrowserCards(messages, cards, conversationId) {
   const out = [];
   messages.forEach((m) => { out.push(m); (byAnchor.get(m.id) || []).forEach((x) => out.push(x)); });
   return out.concat(tail);
+}
+
+/** Max steps kept per card for the step-history sheet. */
+export const HISTORY_MAX = 40;
+
+/** One history row from a real `step` stream message. `at` is the time the phone received it (the protocol carries no timestamp). */
+export function historyEntry(stepMsg, fallbackN = null) {
+  return {
+    n: Number.isFinite(stepMsg?.step) ? stepMsg.step : fallbackN,
+    action: stepMsg?.action?.action || null,
+    caption: captionForStep(stepMsg),
+    at: Number.isFinite(stepMsg?.at) ? stepMsg.at : null,
+  };
+}
+
+/** Appends and caps (oldest dropped). Never mutates. */
+export function appendHistory(history, entry, max = HISTORY_MAX) {
+  const next = [...(history || []), entry];
+  return next.length > max ? next.slice(next.length - max) : next;
+}
+
+/** Ionicons name for a history row / status icon, per agent action. */
+export function iconForAction(action) {
+  switch (action) {
+    case 'navigate': case 'newTab': return 'globe-outline';
+    case 'click': return 'finger-print-outline';
+    case 'fill': return 'text-outline';
+    case 'selectOption': case 'setChecked': return 'checkbox-outline';
+    case 'submitForm': return 'paper-plane-outline';
+    case 'scrollTo': return 'swap-vertical-outline';
+    case 'extractPageText': case 'extractTables': return 'document-text-outline';
+    case 'goBack': return 'arrow-back-outline';
+    case 'download': return 'download-outline';
+    case 'needsHuman': return 'hand-left-outline';
+    case 'finish': return 'checkmark-done-outline';
+    default: return 'ellipsis-horizontal-circle-outline';
+  }
+}
+
+/** "now", "12s ago", "3m ago", or a clock time for older steps. */
+export function formatStepTime(at, now = Date.now()) {
+  if (!Number.isFinite(at)) return '';
+  const d = Math.max(0, Math.round((now - at) / 1000));
+  if (d < 5) return 'now';
+  if (d < 60) return `${d}s ago`;
+  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+  const t = new Date(at);
+  return `${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Status light for a phase: colour + whether it pulses. Working pulses blue, needs-you amber, done green. */
+export function phaseLight(phase, { takeover = false } = {}) {
+  if (takeover) return { color: '#0A84FF', pulse: false };
+  switch (phase) {
+    case CARD_PHASE.WORKING: return { color: '#0A84FF', pulse: true };
+    case CARD_PHASE.PAUSED: return { color: '#FFD60A', pulse: true };
+    case CARD_PHASE.DONE: return { color: '#30D158', pulse: false };
+    case CARD_PHASE.ERROR: return { color: '#FF453A', pulse: false };
+    case CARD_PHASE.RECONNECTING: return { color: '#8E8E93', pulse: true };
+    case CARD_PHASE.LIVE: return { color: '#30D158', pulse: true };
+    default: return { color: '#8E8E93', pulse: false };
+  }
 }

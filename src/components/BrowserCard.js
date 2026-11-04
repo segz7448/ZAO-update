@@ -16,7 +16,8 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, Animated, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassFill, glassSurface, haptic } from '../ui/ios';
-import { CARD_PHASE, statusPill, domainFromUrl } from '../services/browserAgent/browserCardState';
+import { CARD_PHASE, statusPill, domainFromUrl, phaseLight } from '../services/browserAgent/browserCardState';
+import { LiveLight, ProgressRing, FadeSwapText, GlassLayer, glassShadow } from './browserFx';
 
 const STREAM_W = 412; // server/browserAgent.js viewport
 const STREAM_H = 915;
@@ -48,26 +49,31 @@ export function PulseDot({ color, pulse, size = 7 }) {
 
 export function StatusPill({ theme, phase }) {
   const p = statusPill(phase);
-  const c = toneColor(theme, p.tone);
+  const l = phaseLight(phase);
+  const tinted = phase === CARD_PHASE.PAUSED || phase === CARD_PHASE.DONE || phase === CARD_PHASE.ERROR || phase === CARD_PHASE.WORKING;
   return (
-    <View style={[styles.pill, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.75)', borderColor: theme.glassHighlight }]} accessibilityLabel={`Status: ${p.label}`}>
-      {p.tone === 'success' ? <Ionicons name="checkmark-circle" size={12} color={c} /> : <PulseDot color={c} pulse={p.pulse} />}
-      <Text style={[styles.pillText, { color: theme.textPrimary }]}>{p.label}</Text>
+    <View style={[styles.pill, { backgroundColor: tinted ? `${l.color}2E` : 'rgba(255,255,255,0.10)', borderColor: tinted ? `${l.color}66` : 'rgba(255,255,255,0.16)' }]} accessibilityLabel={`Status: ${p.label}`}>
+      {phase === CARD_PHASE.DONE ? <Ionicons name="checkmark-circle" size={14} color={l.color} /> : <LiveLight color={l.color} pulse={l.pulse} size={7} />}
+      <Text style={[styles.pillText, { color: tinted ? l.color : '#fff' }]}>{p.label}</Text>
     </View>
   );
 }
 
-function Ctl({ theme, icon, label, onPress, tone, primary, iconOnly }) {
-  const color = tone === 'danger' ? theme.danger : primary ? '#FFFFFF' : theme.textPrimary;
+/** Big iOS pill button (44pt). kind: glass | primary | alert | danger; iconOnly renders a 44pt circle. */
+function Ctl({ icon, label, onPress, kind = 'glass', iconOnly }) {
+  const fg = kind === 'alert' ? '#1C1C1E' : '#FFFFFF';
+  const bg = kind === 'primary' ? '#0A84FF' : kind === 'alert' ? '#FFD60A' : kind === 'danger' ? '#FF453A' : null;
   return (
     <TouchableOpacity
-      onPress={() => { haptic.light(); onPress?.(); }}
-      style={[styles.ctl, primary ? { backgroundColor: theme.brand, borderColor: 'transparent' } : { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)', borderColor: theme.glassHighlight }]}
+      activeOpacity={0.75}
+      onPress={() => { kind === 'danger' ? haptic.warning() : haptic.medium(); onPress?.(); }}
+      style={[styles.ctl, iconOnly && styles.ctlRound, bg ? { backgroundColor: bg, shadowColor: bg, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } } : null, !iconOnly && { flex: 1 }]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name={icon} size={15} color={color} />
-      {iconOnly ? null : <Text style={[styles.ctlText, { color }]}>{label}</Text>}
+      {bg ? null : <GlassLayer radius={22} tint="rgba(255,255,255,0.10)" />}
+      <Ionicons name={icon} size={18} color={fg} />
+      {iconOnly ? null : <Text style={[styles.ctlText, { color: fg }]} numberOfLines={1}>{label}</Text>}
     </TouchableOpacity>
   );
 }
@@ -89,53 +95,54 @@ export default function BrowserCard({ card, theme, stream, onExpand, onTakeOver,
 
   const header = (
     <View style={styles.header}>
-      <View style={[styles.globe, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.8)', borderColor: theme.glassHighlight }]}>
-        <Ionicons name="globe-outline" size={17} color={theme.brand} />
+      <View style={styles.globe}>
+        <Ionicons name="globe-outline" size={19} color="#4FA3FF" />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.kicker, { color: theme.textSecondary }]} numberOfLines={1}>BROWSER{domain ? ` · ${domain}` : ''}</Text>
-        <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={1}>{collapsed ? (live ? caption : heading) : heading}</Text>
+        <Text style={[styles.kicker]} numberOfLines={1}>BROWSER{domain ? ` · ${domain}` : ''}</Text>
+        <Text style={[styles.title]} numberOfLines={1}>{collapsed ? (live ? caption : heading) : heading}</Text>
       </View>
       <StatusPill theme={theme} phase={phase} />
       <TouchableOpacity onPress={() => { haptic.select(); onToggleCollapsed?.(); }} hitSlop={10} accessibilityLabel={collapsed ? 'Expand browser card' : 'Minimize browser card'} style={styles.chev}>
-        <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color={theme.textSecondary} />
+        <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} color="rgba(255,255,255,0.6)" />
       </TouchableOpacity>
     </View>
   );
 
   return (
-    <View style={[styles.wrap, glassSurface(theme, 20)]} onLayout={onLayout}>
-      <GlassFill theme={theme} radius={20} strong />
+    <View style={[styles.wrap, glassShadow]} onLayout={onLayout}>
+      <GlassLayer radius={26} intensity={60} />
       {header}
       {!collapsed && (
         <>
           <TouchableOpacity activeOpacity={0.9} onPress={() => { haptic.light(); onExpand?.(); }} accessibilityLabel="Open the browser fullscreen"
-            style={[styles.viewport, { backgroundColor: theme.mode === 'dark' ? '#000' : '#E9EAF0', borderColor: theme.glassHighlight }]}
+            style={[styles.viewport, phase === CARD_PHASE.PAUSED && styles.viewportAlert]}
             onLayout={(e) => setVw(e.nativeEvent.layout.width)}>
             {lastFrame ? (
               <Image source={{ uri: `data:image/jpeg;base64,${lastFrame}` }} style={{ width: vw, height: vw * (STREAM_H / STREAM_W) }} resizeMode="cover" />
             ) : (
               <View style={styles.empty}>
                 {phase === CARD_PHASE.ERROR ? <Ionicons name="alert-circle-outline" size={26} color={theme.danger} /> : <ActivityIndicator color={theme.textSecondary} />}
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>{phase === CARD_PHASE.ERROR ? 'No preview available' : 'Waiting for the live view…'}</Text>
+                <Text style={[styles.emptyText, { color: '#8E8E93' }]}>{phase === CARD_PHASE.ERROR ? 'No preview available' : 'Waiting for the live view…'}</Text>
               </View>
             )}
             {phase === CARD_PHASE.RECONNECTING && (
               <View style={styles.veil}><ActivityIndicator color="#fff" /><Text style={styles.veilText}>Reconnecting…</Text></View>
             )}
-            <View style={styles.expandBadge}><Ionicons name="expand" size={14} color="#fff" /></View>
+            <View style={styles.expandBadge}><GlassLayer radius={16} /><Ionicons name="expand-outline" size={16} color="#fff" /></View>
           </TouchableOpacity>
           <View style={styles.captionRow}>
-            <Ionicons name={phase === CARD_PHASE.DONE ? 'checkmark-done' : phase === CARD_PHASE.ERROR ? 'alert-circle' : 'navigate-circle-outline'} size={16} color={phase === CARD_PHASE.ERROR ? theme.danger : theme.textSecondary} />
-            <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>{caption}</Text>
+            {phase === CARD_PHASE.WORKING ? <ProgressRing size={16} color="#4FA3FF" stroke={2} />
+              : <Ionicons name={phase === CARD_PHASE.DONE ? 'checkmark-done' : phase === CARD_PHASE.ERROR ? 'alert-circle' : phase === CARD_PHASE.PAUSED ? 'hand-left' : 'navigate-circle-outline'} size={17} color={phaseLight(phase).color} />}
+            <FadeSwapText text={caption} style={styles.caption} numberOfLines={2} />
           </View>
           <View style={styles.ctls}>
-            <Ctl theme={theme} icon="expand-outline" label="Expand" iconOnly onPress={onExpand} />
+            <Ctl icon="expand-outline" label="Expand" iconOnly onPress={onExpand} />
             {(phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED) && (
-              <Ctl theme={theme} icon="hand-left-outline" label="Take over" primary={phase === CARD_PHASE.PAUSED} onPress={() => (onTakeOver || onExpand)?.()} />
+              <Ctl icon="hand-left-outline" label="Take over" kind={phase === CARD_PHASE.PAUSED ? 'primary' : 'glass'} onPress={() => (onTakeOver || onExpand)?.()} />
             )}
             {(phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED) && (
-              <Ctl theme={theme} icon="stop-circle-outline" label="Stop" tone="danger" onPress={() => { haptic.warning(); if (stream?.cancel()) onStopRequested?.(); }} />
+              <Ctl icon="stop" label="Stop" kind="danger" onPress={() => { if (stream?.cancel()) onStopRequested?.(); }} />
             )}
           </View>
         </>
@@ -157,25 +164,27 @@ export function BrowserMiniIndicator({ card, theme, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginHorizontal: 12, marginVertical: 8, padding: 12, gap: 10 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  globe: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  kicker: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
-  title: { fontSize: 15, fontWeight: '600', letterSpacing: -0.2 },
+  wrap: { marginHorizontal: 12, marginVertical: 8, padding: 14, gap: 12, borderRadius: 26 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  globe: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(79,163,255,0.16)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(79,163,255,0.4)' },
+  kicker: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, color: 'rgba(235,235,245,0.6)' },
+  title: { fontSize: 17, fontWeight: '700', letterSpacing: -0.4, color: '#fff', marginTop: 1 },
   chev: { padding: 2 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, height: 24, borderRadius: 12, borderWidth: 1 },
-  pillText: { fontSize: 12, fontWeight: '600' },
-  viewport: { width: '100%', aspectRatio: 16 / 10, borderRadius: 14, overflow: 'hidden', borderWidth: 1 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 4, paddingRight: 10, height: 26, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth },
+  pillText: { fontSize: 13, fontWeight: '600', letterSpacing: -0.1 },
+  viewport: { width: '100%', aspectRatio: 16 / 11, borderRadius: 20, overflow: 'hidden', backgroundColor: '#fff' },
+  viewportAlert: { borderWidth: 2, borderColor: 'rgba(255,214,10,0.8)' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F2F2F7' },
   emptyText: { fontSize: 13 },
   veil: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', gap: 8 },
   veilText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  expandBadge: { position: 'absolute', right: 8, top: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  expandBadge: { position: 'absolute', right: 10, bottom: 10, width: 32, height: 32, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
-  caption: { flex: 1, fontSize: 14, fontWeight: '500' },
-  ctls: { flexDirection: 'row', gap: 6 },
-  ctl: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1 },
-  ctlText: { fontSize: 14, fontWeight: '600' },
+  caption: { flex: 1, fontSize: 15, fontWeight: '500', letterSpacing: -0.2, color: 'rgba(255,255,255,0.88)' },
+  ctls: { flexDirection: 'row', gap: 8 },
+  ctl: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 44, paddingHorizontal: 16, borderRadius: 22, overflow: 'hidden' },
+  ctlRound: { width: 44, paddingHorizontal: 0 },
+  ctlText: { fontSize: 16, fontWeight: '600', letterSpacing: -0.3 },
   mini: { position: 'absolute', top: 6, alignSelf: 'center', maxWidth: '86%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 6, paddingRight: 6, height: 38, zIndex: 20 },
   miniThumb: { width: 26, height: 26, borderRadius: 13 },
   miniText: { fontSize: 13, fontWeight: '500', flexShrink: 1 },

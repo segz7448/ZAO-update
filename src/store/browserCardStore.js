@@ -66,7 +66,7 @@ export function attachBrowserCardStream(stream, getContext = () => ({})) {
       const s = st();
       const active = s.cards.find((c) => c.id === s.activeCardId);
       if (!active || TERMINAL_PHASES.has(active.phase)) s.startCard(getContext());
-      st().dispatch({ type: 'step', ...m });
+      st().dispatch({ type: 'step', at: Date.now(), ...m }); // receive time for the step-history sheet
     }),
     stream.on('taskResult', (r) => st().dispatch({ type: 'taskResult', ...r })),
     stream.on('connectionChange', ({ connected, error }) => st().dispatch({ type: 'connection', connected, error })),
