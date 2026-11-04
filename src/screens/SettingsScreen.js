@@ -13,6 +13,7 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { IconTile, haptic } from '../ui/ios';
 import { usePreferencesStore } from '../store/preferencesStore';
 import { useThemeStore } from '../store/themeStore';
 import { useTheme } from '../theme/useTheme';
@@ -719,7 +720,8 @@ function MemorySection({ preferences, onToggle, theme }) {
         <Switch
           value={memoryEnabled}
           onValueChange={onToggle}
-          trackColor={{ false: theme.surfaceAlt, true: theme.info }}
+          trackColor={{ false: theme.fill, true: theme.switchTrack }}
+          ios_backgroundColor={theme.fill}
         />
       </View>
       <Text style={[styles.helperText, { color: theme.textSecondary, marginTop: 4 }]}>
@@ -1117,7 +1119,8 @@ function HooksSection({ theme }) {
                     <Switch
                       value={!!item.enabled}
                       onValueChange={(val) => setHookEnabled(item.id, val).then(load)}
-                      trackColor={{ false: theme.surfaceAlt, true: theme.info }}
+                      trackColor={{ false: theme.fill, true: theme.switchTrack }}
+          ios_backgroundColor={theme.fill}
                     />
                   </View>
                   <Text style={{ color: theme.textPrimary, fontSize: 13, marginBottom: 4 }}>matcher: {item.matcher}</Text>
@@ -1333,7 +1336,7 @@ function AuditTrailSection({ preferences, onSetOtelEndpoint, theme }) {
 }
 
 function SectionHeader({ title, theme }) {
-  return <Text style={[styles.sectionHeader, { color: theme.textTertiary }]}>{title}</Text>;
+  return <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>{title}</Text>;
 }
 
 /**
@@ -1432,21 +1435,16 @@ function BrowserAgentSection({ preferences, theme }) {
 }
 
 
-function RadioOption({ label, subtitle, selected, onPress, theme }) {
+function RadioOption({ label, subtitle, selected, onPress, theme, icon, tileColor }) {
   return (
-    <TouchableOpacity style={styles.modeOption} onPress={onPress}>
+    <TouchableOpacity style={styles.modeOption} onPress={() => { haptic.select(); onPress?.(); }} accessibilityState={{ selected }}>
       <View style={styles.modeOptionLeft}>
-        <View
-          style={[
-            styles.radio,
-            { borderColor: theme.borderStrong },
-            selected && { borderColor: theme.accent, backgroundColor: theme.accent },
-          ]}
-        />
-        <View>
+        {icon ? <IconTile name={icon} color={tileColor || theme.tileColors.blue} /> : null}
+        <View style={{ flex: 1 }}>
           <Text style={[styles.modeTitle, { color: theme.textPrimary }]}>{label}</Text>
-          {subtitle ? <Text style={[styles.modeSubtitle, { color: theme.textTertiary }]}>{subtitle}</Text> : null}
+          {subtitle ? <Text style={[styles.modeSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text> : null}
         </View>
+        {selected ? <Ionicons name="checkmark" size={20} color={theme.brand} /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -1584,21 +1582,22 @@ export default function SettingsScreen({ onOpenSidebar }) {
   return (
     <>
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
+      style={[styles.container, { backgroundColor: theme.groupedBackground }]}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
       <View style={styles.header}>
         {onOpenSidebar && (
           <TouchableOpacity
-            onPress={onOpenSidebar}
+            onPress={() => { haptic.light(); onOpenSidebar(); }}
             hitSlop={12}
-            style={[styles.headerIconButton, { backgroundColor: theme.chromeButton, borderRadius: 20, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }]}
+            style={styles.headerIconButton}
+            accessibilityLabel="Open menu"
           >
-            <Ionicons name="menu-outline" size={22} color={theme.textPrimary} />
+            <Ionicons name="chevron-back" size={26} color={theme.brand} />
           </TouchableOpacity>
         )}
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
       </View>
+      <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Settings</Text>
 
       <SectionHeader title="Appearance" theme={theme} />
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -1608,6 +1607,8 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'auto'}
           onPress={() => setThemePreference('auto')}
           theme={theme}
+          icon="contrast"
+          tileColor={theme.tileColors.indigo}
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
@@ -1615,6 +1616,8 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'light'}
           onPress={() => setThemePreference('light')}
           theme={theme}
+          icon="sunny"
+          tileColor={theme.tileColors.orange}
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <RadioOption
@@ -1622,17 +1625,20 @@ export default function SettingsScreen({ onOpenSidebar }) {
           selected={themePreference === 'dark'}
           onPress={() => setThemePreference('dark')}
           theme={theme}
+          icon="moon"
+          tileColor={theme.tileColors.gray}
         />
       </View>
 
       <SectionHeader title="Usage" theme={theme} />
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
         <TouchableOpacity
-          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-          onPress={() => setUsageModalVisible(true)}
+          style={styles.navRow}
+          onPress={() => { haptic.light(); setUsageModalVisible(true); }}
         >
-          <Text style={[styles.keyLabel, { color: theme.textPrimary }]}>View usage & activity</Text>
-          <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+          <IconTile name="stats-chart" color={theme.tileColors.green} />
+          <Text style={[styles.navRowLabel, { color: theme.textPrimary }]}>Usage & Activity</Text>
+          <Ionicons name="chevron-forward" size={17} color={theme.textTertiary} />
         </TouchableOpacity>
       </View>
 
@@ -1783,35 +1789,57 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    minHeight: 44,
   },
   headerIconButton: {
-    padding: 4,
-    marginRight: 12,
+    marginLeft: -6,
+    paddingVertical: 4,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 34,
     fontWeight: '700',
+    letterSpacing: 0.37,
+    lineHeight: 41,
+    marginBottom: 4,
   },
   sectionHeader: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 20,
-    marginBottom: 8,
+    letterSpacing: -0.08,
+    marginTop: 26,
+    marginBottom: 7,
+    marginLeft: 16,
   },
   card: {
-    borderRadius: 18,
-    padding: 4,
+    borderRadius: 10,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  navRowLabel: {
+    flex: 1,
+    fontSize: 17,
+    letterSpacing: -0.41,
   },
   modeOption: {
-    paddingVertical: 14,
+    paddingVertical: 8,
     paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   modeOptionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
   radio: {
     width: 18,
@@ -1821,16 +1849,17 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   modeTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '400',
+    letterSpacing: -0.41,
   },
   modeSubtitle: {
     fontSize: 13,
     marginTop: 1,
   },
   divider: {
-    height: 1,
-    marginHorizontal: 12,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 53,
   },
   subLabel: {
     fontSize: 13,
@@ -1865,8 +1894,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   keyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '400',
+    letterSpacing: -0.41,
   },
   statusPill: {
     paddingHorizontal: 8,

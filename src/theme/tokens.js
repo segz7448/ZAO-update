@@ -1,17 +1,10 @@
 /**
- * ZAO — Theme Tokens
- *
- * Original Muse×Grok-inspired system (not a copy of either app).
- * Light: Muse-like soft canvas + bubbles. Dark: Grok-like true-black canvas.
- * Spacing / radii / typography are first-class tokens (previously ad-hoc).
- *
- * Chosen unknowns (noted for the redesign report):
- * - Dark Muse palette unavailable → dark mode follows Grok-like #000 / #1A1A1A
- * - Brand accent → Muse icon blue #0073F4 (light) / #4B9BFF (dark); Allow #225CDD
- * - Mode switcher labels → Chat | Plan | Browse (maps to existing ZAO surfaces)
- * - Trailing composer CTA → Send (no voice feature; Speak-style pill shape only)
- * - Type scale → 13/15/17/26 system sans; 4pt spacing grid; bubble radius 20
+ * ZAO — Theme Tokens (iOS 18 HIG edition of the Muse×Grok blend)
+ * Light: iOS system colors, iMessage-style bubbles, grouped backgrounds.
+ * Dark: true-black canvas, plain-text assistant (Grok identity kept).
  */
+
+import { Platform } from 'react-native';
 
 export const spacing = {
   xs: 4,
@@ -24,134 +17,167 @@ export const spacing = {
 };
 
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  bubble: 20,
-  card: 16,
-  composer: 24,
-  pill: 999,
-  chrome: 20,
+  sm: 8, md: 10, lg: 13, xl: 18,
+  bubble: 18, card: 10, grouped: 10, tile: 7,
+  composer: 22, pill: 999, chrome: 18, sheet: 14,
 };
 
+export const fontFamily = Platform.select({
+  ios: 'System', // SF Pro Text / Display
+  android: 'sans-serif',
+  default: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+});
+
+/** iOS 18 Dynamic Type (Large / default) */
 export const typography = {
-  title: { fontSize: 26, fontWeight: '600', lineHeight: 32 },
-  headline: { fontSize: 17, fontWeight: '600', lineHeight: 22 },
-  body: { fontSize: 15, fontWeight: '400', lineHeight: 21 },
-  callout: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
-  caption: { fontSize: 13, fontWeight: '400', lineHeight: 17 },
-  micro: { fontSize: 11, fontWeight: '600', lineHeight: 14 },
+  largeTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41, letterSpacing: 0.37 },
+  title: { fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: 0.36 },
+  title2: { fontSize: 22, fontWeight: '700', lineHeight: 28, letterSpacing: 0.35 },
+  headline: { fontSize: 17, fontWeight: '600', lineHeight: 22, letterSpacing: -0.41 },
+  body: { fontSize: 17, fontWeight: '400', lineHeight: 22, letterSpacing: -0.41 },
+  callout: { fontSize: 16, fontWeight: '400', lineHeight: 21, letterSpacing: -0.32 },
+  subhead: { fontSize: 15, fontWeight: '400', lineHeight: 20, letterSpacing: -0.24 },
+  footnote: { fontSize: 13, fontWeight: '400', lineHeight: 18, letterSpacing: -0.08 },
+  caption: { fontSize: 12, fontWeight: '400', lineHeight: 16, letterSpacing: 0 },
+  micro: { fontSize: 11, fontWeight: '600', lineHeight: 13, letterSpacing: 0.07 },
+};
+
+/** iOS Settings icon-tile palette */
+export const tileColors = {
+  blue: '#007AFF', green: '#34C759', orange: '#FF9500', red: '#FF3B30',
+  purple: '#AF52DE', pink: '#FF2D55', teal: '#5AC8FA', indigo: '#5856D6',
+  gray: '#8E8E93', yellow: '#FFCC00',
+};
+
+export const springs = {
+  drawer: { damping: 26, stiffness: 260, mass: 1 },
+  sheet: { damping: 24, stiffness: 240, mass: 1 },
+  press: { damping: 18, stiffness: 400, mass: 0.6 },
 };
 
 export const lightTheme = {
   mode: 'light',
-  background: '#FDFDFD',
+  background: '#FFFFFF',
+  groupedBackground: '#F2F2F7',
   surface: '#FFFFFF',
-  surfaceAlt: '#EAEAEC',
+  surfaceAlt: '#F2F2F7',
+  secondarySystemBackground: '#F2F2F7',
+  tertiarySystemBackground: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
-  composer: '#EAEAEC',
-  border: '#EAEAEC',
-  borderStrong: '#D8D8DC',
+  composer: '#FFFFFF',
+  composerBorder: 'rgba(60,60,67,0.18)',
+  border: 'rgba(60,60,67,0.29)',
+  separator: 'rgba(60,60,67,0.29)',
+  borderStrong: '#C6C6C8',
+  fill: 'rgba(120,120,128,0.12)',
+  barTint: 'rgba(249,249,249,0.82)',
+  blurTint: 'light',
 
-  textPrimary: '#111111',
-  textSecondary: '#6B6B70',
-  textTertiary: '#9A9AA0',
+  textPrimary: '#000000',
+  textSecondary: 'rgba(60,60,67,0.6)',
+  textTertiary: 'rgba(60,60,67,0.3)',
   textInverse: '#FFFFFF',
 
-  accent: '#111111',
-  accentSoft: '#F3F5F7',
-  brand: '#0073F4',
-  brandStrong: '#225CDD',
-  deny: '#F3F5F7',
-  chromeButton: '#F9F9F9',
+  accent: '#007AFF',
+  accentSoft: 'rgba(0,122,255,0.1)',
+  brand: '#007AFF',
+  brandStrong: '#007AFF',
+  deny: 'rgba(120,120,128,0.12)',
+  chromeButton: 'rgba(120,120,128,0.12)',
 
-  bubbleUser: '#CCE5FF',
-  bubbleAssistant: '#EAEAEC',
-  bubbleUserText: '#111111',
-  bubbleAssistantText: '#111111',
-  /** Light mode keeps Muse-like soft assistant bubbles */
+  bubbleUser: '#007AFF',
+  bubbleAssistant: '#E9E9EB',
+  bubbleUserText: '#FFFFFF',
+  bubbleAssistantText: '#000000',
   assistantUsesBubble: true,
 
-  speak: '#000000',
+  speak: '#007AFF',
   speakText: '#FFFFFF',
+  sendDisabled: '#C7C7CC',
   citationCard: '#FFFFFF',
-  chipBlue: '#F2F5FE',
-  chipGrey: '#F9F9F9',
-  modeSelected: '#EAEAEC',
-  modeTrack: '#F3F5F7',
+  chipBlue: 'rgba(0,122,255,0.1)',
+  chipGrey: '#F2F2F7',
+  modeSelected: '#FFFFFF',
+  modeTrack: 'rgba(118,118,128,0.12)',
+  switchTrack: '#34C759',
 
-  success: '#22C55E',
-  warning: '#EAB308',
-  danger: '#EF4444',
-  dangerSoft: '#FEF2F2',
-  dangerBorder: '#FECACA',
-  dangerText: '#B91C1C',
+  success: '#34C759',
+  warning: '#FF9500',
+  danger: '#FF3B30',
+  dangerSoft: 'rgba(255,59,48,0.1)',
+  dangerBorder: 'rgba(255,59,48,0.3)',
+  dangerText: '#FF3B30',
 
-  info: '#0073F4',
-  infoSoft: '#E8F2FF',
+  info: '#007AFF',
+  infoSoft: 'rgba(0,122,255,0.1)',
 
-  overlay: 'rgba(0,0,0,0.35)',
+  overlay: 'rgba(0,0,0,0.4)',
   statusBarStyle: 'dark-content',
 
-  spacing,
-  radii,
-  typography,
+  spacing, radii, typography, fontFamily, tileColors,
 };
 
 export const darkTheme = {
   mode: 'dark',
   background: '#000000',
-  surface: '#1A1A1A',
-  surfaceAlt: '#262626',
-  surfaceElevated: '#1A1A1A',
-  composer: '#1A1A1A',
-  border: '#2A2A2A',
-  borderStrong: '#3A3A3A',
+  groupedBackground: '#000000',
+  surface: '#1C1C1E',
+  surfaceAlt: '#2C2C2E',
+  secondarySystemBackground: '#1C1C1E',
+  tertiarySystemBackground: '#2C2C2E',
+  surfaceElevated: '#1C1C1E',
+  composer: '#1C1C1E',
+  composerBorder: 'rgba(84,84,88,0.65)',
+  border: 'rgba(84,84,88,0.65)',
+  separator: 'rgba(84,84,88,0.65)',
+  borderStrong: '#38383A',
+  fill: 'rgba(120,120,128,0.24)',
+  barTint: 'rgba(22,22,24,0.82)',
+  blurTint: 'dark',
 
-  textPrimary: '#FAFAFA',
-  textSecondary: '#A3A3A3',
-  textTertiary: '#737373',
+  textPrimary: '#FFFFFF',
+  textSecondary: 'rgba(235,235,245,0.6)',
+  textTertiary: 'rgba(235,235,245,0.3)',
   textInverse: '#000000',
 
-  accent: '#FAFAFA',
-  accentSoft: '#262626',
-  brand: '#4B9BFF',
-  brandStrong: '#225CDD',
-  deny: '#262626',
-  chromeButton: '#0A0A0A',
+  accent: '#0A84FF',
+  accentSoft: 'rgba(10,132,255,0.18)',
+  brand: '#0A84FF',
+  brandStrong: '#0A84FF',
+  deny: 'rgba(120,120,128,0.24)',
+  chromeButton: 'rgba(120,120,128,0.24)',
 
-  bubbleUser: '#171717',
+  bubbleUser: '#0A84FF',
   bubbleAssistant: 'transparent',
-  bubbleUserText: '#FAFAFA',
-  bubbleAssistantText: '#FAFAFA',
-  /** Dark mode: Grok-like plain assistant text on canvas */
+  bubbleUserText: '#FFFFFF',
+  bubbleAssistantText: '#FFFFFF',
+  /** Dark mode keeps the plain-text assistant identity */
   assistantUsesBubble: false,
 
-  speak: '#FFFFFF',
-  speakText: '#000000',
-  citationCard: '#1E1E1E',
-  chipBlue: '#1A2332',
-  chipGrey: '#1A1A1A',
-  modeSelected: '#2D2D2D',
-  modeTrack: '#0A0A0A',
+  speak: '#0A84FF',
+  speakText: '#FFFFFF',
+  sendDisabled: '#3A3A3C',
+  citationCard: '#1C1C1E',
+  chipBlue: 'rgba(10,132,255,0.18)',
+  chipGrey: '#1C1C1E',
+  modeSelected: '#636366',
+  modeTrack: 'rgba(118,118,128,0.24)',
+  switchTrack: '#30D158',
 
-  success: '#4ADE80',
-  warning: '#FACC15',
-  danger: '#F87171',
-  dangerSoft: '#2A1616',
-  dangerBorder: '#4A2323',
-  dangerText: '#F87171',
+  success: '#30D158',
+  warning: '#FF9F0A',
+  danger: '#FF453A',
+  dangerSoft: 'rgba(255,69,58,0.15)',
+  dangerBorder: 'rgba(255,69,58,0.35)',
+  dangerText: '#FF453A',
 
-  info: '#60A5FA',
-  infoSoft: '#1A2332',
+  info: '#0A84FF',
+  infoSoft: 'rgba(10,132,255,0.18)',
 
-  overlay: 'rgba(0,0,0,0.65)',
+  overlay: 'rgba(0,0,0,0.6)',
   statusBarStyle: 'light-content',
 
-  spacing,
-  radii,
-  typography,
+  spacing, radii, typography, fontFamily, tileColors,
 };
 
 export function getTheme(mode) {

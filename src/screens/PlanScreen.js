@@ -14,9 +14,10 @@
  * additive and only shows when the data is actually there.
  */
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FrostedBar, haptic } from '../ui/ios';
 import { usePlanStore } from '../store/planStore';
 import { useTheme } from '../theme/useTheme';
 import StepDetailSheet from './StepDetailSheet';
@@ -60,6 +61,7 @@ const MILESTONE_STATUS_ICON = {
 
 export default function PlanScreen({ planId, onClose, onApproveStep, onRejectStep, onCancelPlan, onAcceptCheckpoint, onDismissCheckpoint, onStartPlan }) {
   const theme = useTheme();
+  const scrollY = useRef(new Animated.Value(0)).current;
   const { activePlan, isLoading, loadPlan } = usePlanStore();
   const [detailStep, setDetailStep] = useState(null); // tapped step for StepDetailSheet's drill-down, or null when the sheet is closed
 
@@ -109,29 +111,40 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
   // actions, not a snapshot from the moment it was opened.
   const freshDetailStep = detailStep ? steps.find((s) => s.id === detailStep.id) || null : null;
 
+  const inlineTitleOpacity = scrollY.interpolate({ inputRange: [30, 60], outputRange: [0, 1], extrapolate: 'clamp' });
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={onClose} hitSlop={8}>
-          <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
+    <View style={[styles.container, { backgroundColor: theme.groupedBackground }]}>
+      <FrostedBar theme={theme} style={[styles.header, { borderBottomColor: theme.separator }]}>
+        <TouchableOpacity onPress={() => { haptic.light(); onClose?.(); }} hitSlop={8} style={styles.backBtn} accessibilityLabel="Back">
+          <Ionicons name="chevron-back" size={26} color={theme.brand} />
+          <Text style={[styles.backText, { color: theme.brand }]}>Chat</Text>
         </TouchableOpacity>
+        <Animated.Text style={[styles.inlineTitle, { color: theme.textPrimary, opacity: inlineTitleOpacity }]} numberOfLines={1}>
+          {goal}
+        </Animated.Text>
+        <View style={styles.headerRight}>
+          {(status === 'running' || status === 'awaiting_approval' || status === 'paused' || status === 'recovering') && (
+            <TouchableOpacity onPress={() => { haptic.warning(); onCancelPlan?.(activePlan.id); }} hitSlop={8}>
+              <Text style={[styles.cancelText, { color: theme.danger }]}>Stop</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </FrostedBar>
+
+      <Animated.ScrollView
+        contentContainerStyle={styles.list}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+      >
         <View style={styles.headerTextWrap}>
-          <Text style={[styles.headerGoal, { color: theme.textPrimary }]} numberOfLines={2}>{goal}</Text>
+          <Text style={[styles.headerGoal, { color: theme.textPrimary }]} numberOfLines={3}>{goal}</Text>
           <Text style={[styles.headerStatus, { color: theme.textSecondary }]}>
             {PLAN_STATUS_LABEL[status] || status} · {doneCount}/{steps.length} steps done
             {milestones.length > 0 ? ` · ${reachedMilestoneCount}/${milestones.length} milestones` : ''}
           </Text>
         </View>
-        {(status === 'running' || status === 'awaiting_approval' || status === 'paused' || status === 'recovering') && (
-          <TouchableOpacity onPress={() => onCancelPlan?.(activePlan.id)} hitSlop={8}>
-            <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Stop</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        {milestones.length > 0 && <MilestoneStrip milestones={milestones} theme={theme} />}
 
-      {milestones.length > 0 && <MilestoneStrip milestones={milestones} theme={theme} />}
-
-      <ScrollView contentContainerStyle={styles.list}>
         {steps.map((step, index) => (
           <StepRow
             key={step.id}
@@ -144,7 +157,7 @@ export default function PlanScreen({ planId, onClose, onApproveStep, onRejectSte
             onOpenDetail={() => setDetailStep(step)}
           />
         ))}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {isAwaitingStart && (
         <View style={[styles.approvalBar, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
@@ -336,18 +349,22 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 12,
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTextWrap: { flex: 1 },
-  headerGoal: { fontSize: 16, fontWeight: '700' },
-  headerStatus: { fontSize: 12, marginTop: 3 },
-  cancelText: { fontSize: 13, fontWeight: '600', paddingTop: 2 },
-  list: { padding: 14, paddingBottom: 40 },
+  headerTextWrap: { paddingHorizontal: 2, paddingBottom: 14 },
+  headerGoal: { fontSize: 34, fontWeight: '700', letterSpacing: 0.37, lineHeight: 41 },
+  headerStatus: { fontSize: 15, marginTop: 4, letterSpacing: -0.24 },
+  cancelText: { fontSize: 17, fontWeight: '400', letterSpacing: -0.41 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: -8, minWidth: 80 },
+  backText: { fontSize: 17, letterSpacing: -0.41 },
+  inlineTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', letterSpacing: -0.41 },
+  headerRight: { minWidth: 80, alignItems: 'flex-end' },
+  list: { padding: 16, paddingBottom: 40 },
   milestoneStrip: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: 10,

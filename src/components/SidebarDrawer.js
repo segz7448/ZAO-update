@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { haptic } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -66,9 +67,11 @@ export default function SidebarDrawer({
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(translateX, {
+      Animated.spring(translateX, {
         toValue: visible ? 0 : -DRAWER_WIDTH,
-        duration: 240,
+        damping: 26,
+        stiffness: 260,
+        mass: 1,
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
@@ -92,7 +95,7 @@ export default function SidebarDrawer({
         if (gesture.dx < -DRAWER_WIDTH * 0.4) {
           onClose();
         } else {
-          Animated.timing(translateX, { toValue: 0, duration: 180, useNativeDriver: true }).start();
+          Animated.spring(translateX, { toValue: 0, damping: 24, stiffness: 300, useNativeDriver: true }).start();
         }
       },
     })
@@ -118,24 +121,24 @@ export default function SidebarDrawer({
       <Animated.View
         style={[
           styles.drawer,
-          { backgroundColor: theme.background, transform: [{ translateX }] },
+          { backgroundColor: theme.mode === 'dark' ? '#1C1C1E' : '#F2F2F7', transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           <View style={styles.header}>
             <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Chats</Text>
+            <TouchableOpacity onPress={() => { haptic.light(); onNewChat?.(); }} hitSlop={12} accessibilityLabel="New chat">
+              <Ionicons name="create-outline" size={24} color={theme.brand} />
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={[styles.newChatButton, { backgroundColor: theme.brand, borderColor: theme.brand }]}
-            onPress={onNewChat}
-          >
-            <Text style={[styles.newChatIcon, { color: theme.textInverse }]}>+</Text>
-            <Text style={[styles.newChatText, { color: theme.textInverse }]}>New chat</Text>
-          </TouchableOpacity>
+          <View style={[styles.searchField, { backgroundColor: theme.fill }]}>
+            <Ionicons name="search" size={16} color={theme.textSecondary} />
+            <Text style={[styles.searchText, { color: theme.textSecondary }]}>Search</Text>
+          </View>
 
-          <Text style={[styles.sectionLabel, { color: theme.textTertiary }]}>Recents</Text>
+          <Text style={[styles.sectionLabel, { color: theme.textPrimary }]}>Recents</Text>
 
           <FlatList
             data={conversations}
@@ -167,8 +170,8 @@ export default function SidebarDrawer({
                 {userName}
               </Text>
             </View>
-            <TouchableOpacity onPress={onOpenSettings} hitSlop={12} style={styles.settingsButton}>
-              <Ionicons name="settings-outline" size={20} color={theme.textSecondary} />
+            <TouchableOpacity onPress={() => { haptic.light(); onOpenSettings?.(); }} hitSlop={12} style={styles.settingsButton} accessibilityLabel="Settings">
+              <Ionicons name="settings-outline" size={22} color={theme.brand} />
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -180,7 +183,7 @@ export default function SidebarDrawer({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   drawer: {
     position: 'absolute',
@@ -195,13 +198,31 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   brandTitle: {
-    fontSize: 22,
+    fontSize: 34,
     fontWeight: '700',
+    letterSpacing: 0.37,
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginTop: 6,
+    height: 36,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+  },
+  searchText: {
+    fontSize: 17,
+    letterSpacing: -0.41,
   },
   newChatButton: {
     flexDirection: 'row',
@@ -223,25 +244,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 20,
     fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 20,
-    marginBottom: 4,
-    marginHorizontal: 20,
+    letterSpacing: 0.38,
+    marginTop: 22,
+    marginBottom: 6,
+    marginHorizontal: 16,
   },
   list: {
     flex: 1,
   },
   convoRow: {
-    marginHorizontal: 12,
-    paddingVertical: 14,
+    marginHorizontal: 10,
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    borderRadius: 14,
+    borderRadius: 10,
   },
   convoTitle: {
-    fontSize: 14,
+    fontSize: 17,
+    letterSpacing: -0.41,
   },
   emptyText: {
     fontSize: 13,
@@ -254,7 +275,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   userRow: {
     flexDirection: 'row',

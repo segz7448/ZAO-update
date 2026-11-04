@@ -21,37 +21,44 @@
 
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, Switch } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { FrostedBar, Grabber, IconTile, haptic } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
-function ActionTile({ icon, label, onPress, theme }) {
+function ActionRow({ icon, color, label, onPress, theme, last }) {
   return (
     <TouchableOpacity
-      style={[styles.tile, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-      onPress={onPress}
+      style={styles.actionRow}
+      onPress={() => { haptic.light(); onPress?.(); }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      {icon}
-      <Text style={[styles.tileLabel, { color: theme.textPrimary }]}>{label}</Text>
+      <IconTile name={icon} color={color} />
+      <Text style={[styles.actionLabel, { color: theme.textPrimary }]}>{label}</Text>
+      <Ionicons name="chevron-forward" size={17} color={theme.textTertiary} />
+      {!last && <View style={[styles.rowSep, { backgroundColor: theme.separator }]} />}
     </TouchableOpacity>
   );
 }
 
-function ToggleRow({ icon, label, value, onValueChange, theme, disabled = false, subtitle = null }) {
+function ToggleRow({ icon, color, label, value, onValueChange, theme, disabled = false, subtitle = null, last }) {
   return (
-    <View style={[styles.toggleRow, disabled && { opacity: 0.5 }]}>
-      <View style={styles.toggleIcon}>{icon}</View>
+    <View style={[styles.actionRow, disabled && { opacity: 0.5 }]}>
+      <IconTile name={icon} color={color} />
       <View style={{ flex: 1 }}>
-        <Text style={[styles.toggleLabel, { color: theme.textPrimary }]}>{label}</Text>
+        <Text style={[styles.actionLabel, { color: theme.textPrimary, flex: 0 }]}>{label}</Text>
         {subtitle && (
-          <Text style={[styles.toggleSubtitle, { color: theme.textTertiary }]}>{subtitle}</Text>
+          <Text style={[styles.toggleSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
         )}
       </View>
       <Switch
         value={value}
-        onValueChange={disabled ? undefined : onValueChange}
+        onValueChange={disabled ? undefined : (v) => { haptic.select(); onValueChange?.(v); }}
         disabled={disabled}
-        trackColor={{ false: theme.borderStrong, true: theme.brand }}
+        trackColor={{ false: theme.fill, true: theme.switchTrack }}
+        ios_backgroundColor={theme.fill}
       />
+      {!last && <View style={[styles.rowSep, { backgroundColor: theme.separator }]} />}
     </View>
   );
 }
@@ -70,137 +77,74 @@ export default function AttachmentSheet({
 }) {
   const theme = useTheme();
 
+  const groupBg = theme.mode === 'dark' ? theme.tertiarySystemBackground : theme.surface;
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
-        <View style={[styles.handle, { backgroundColor: theme.borderStrong }]} />
-
+      <Pressable style={[styles.backdrop, { backgroundColor: theme.overlay }]} onPress={onClose} />
+      <FrostedBar theme={theme} intensity={90} style={[styles.sheet, { backgroundColor: theme.mode === 'dark' ? 'rgba(28,28,30,0.94)' : 'rgba(242,242,247,0.94)' }]}>
+        <Grabber theme={theme} />
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>Add to chat</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={20} color={theme.textSecondary} />
+          <Text style={[styles.title, { color: theme.textPrimary }]}>Add to Chat</Text>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={12}
+            style={[styles.closeBtn, { backgroundColor: theme.fill }]}
+            accessibilityLabel="Close"
+          >
+            <Ionicons name="close" size={16} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tileRow}>
-          <ActionTile
-            icon={<Ionicons name="camera-outline" size={26} color={theme.textPrimary} style={styles.tileIcon} />}
-            label="Camera"
-            onPress={onCamera}
-            theme={theme}
-          />
-          <ActionTile
-            icon={<Ionicons name="image-outline" size={26} color={theme.textPrimary} style={styles.tileIcon} />}
-            label="Photos"
-            onPress={onPhotos}
-            theme={theme}
-          />
-          <ActionTile
-            icon={<MaterialIcons name="insert-drive-file" size={26} color={theme.textPrimary} style={styles.tileIcon} />}
-            label="Files"
-            onPress={onFiles}
-            theme={theme}
-          />
+        <View style={[styles.group, { backgroundColor: groupBg }]}>
+          <ActionRow icon="camera" color={theme.tileColors.gray} label="Camera" onPress={onCamera} theme={theme} />
+          <ActionRow icon="images" color={theme.tileColors.blue} label="Photos" onPress={onPhotos} theme={theme} />
+          <ActionRow icon="document" color={theme.tileColors.orange} label="Files" onPress={onFiles} theme={theme} last />
         </View>
 
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-        <ToggleRow
-          icon={<Ionicons name="globe-outline" size={18} color={theme.textSecondary} />}
-          label="Web search"
-          subtitle="Search the web when useful"
-          value={webSearchEnabled}
-          onValueChange={onToggleWebSearch}
-          theme={theme}
-        />
-
-        <ToggleRow
-          icon={<Ionicons name="logo-github" size={18} color={theme.textSecondary} />}
-          label="GitHub"
-          subtitle={githubConfigured ? 'Use your GitHub repos when useful' : 'Add your GitHub token in Settings first'}
-          value={githubEnabled}
-          onValueChange={onToggleGithub}
-          theme={theme}
-        />
-      </View>
+        <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>TOOLS</Text>
+        <View style={[styles.group, { backgroundColor: groupBg }]}>
+          <ToggleRow
+            icon="globe"
+            color={theme.tileColors.teal}
+            label="Web Search"
+            subtitle="Search the web when useful"
+            value={webSearchEnabled}
+            onValueChange={onToggleWebSearch}
+            theme={theme}
+          />
+          <ToggleRow
+            icon="logo-github"
+            color={theme.mode === 'dark' ? '#48484A' : '#1C1C1E'}
+            label="GitHub"
+            subtitle={githubConfigured ? 'Use your GitHub repos when useful' : 'Add your GitHub token in Settings first'}
+            value={githubEnabled}
+            onValueChange={onToggleGithub}
+            theme={theme}
+            last
+          />
+        </View>
+      </FrostedBar>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+  backdrop: { flex: 1 },
   sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 3,
-    alignSelf: 'center',
-    marginBottom: 12,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 14, borderTopRightRadius: 14,
+    paddingHorizontal: 16, paddingBottom: 34, overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 14, marginTop: 4,
   },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  tileRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  tile: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileIcon: {
-    marginBottom: 6,
-  },
-  tileLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  toggleIcon: {
-    marginRight: 12,
-    width: 24,
-    alignItems: 'center',
-  },
-  toggleLabel: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  toggleSubtitle: {
-    fontSize: 12,
-    marginTop: 1,
-  },
+  title: { fontSize: 17, fontWeight: '600', letterSpacing: -0.41 },
+  closeBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  group: { borderRadius: 10, overflow: 'hidden' },
+  groupLabel: { fontSize: 13, letterSpacing: -0.08, marginTop: 22, marginBottom: 7, marginLeft: 16 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50, paddingHorizontal: 14, paddingVertical: 8 },
+  actionLabel: { flex: 1, fontSize: 17, letterSpacing: -0.41 },
+  rowSep: { position: 'absolute', left: 55, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
+  toggleSubtitle: { fontSize: 13, marginTop: 1, letterSpacing: -0.08 },
 });

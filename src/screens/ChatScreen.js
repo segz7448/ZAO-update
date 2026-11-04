@@ -17,6 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { FrostedBar, haptic } from '../ui/ios';
 import { useChatStore } from '../store/chatStore';
 import { usePreferencesStore } from '../store/preferencesStore';
 import AttachmentSheet from '../components/AttachmentSheet';
@@ -195,14 +196,14 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
       <View style={styles.confirmCardActions}>
         <TouchableOpacity
           style={[styles.confirmCardBtn, { backgroundColor: theme.deny }]}
-          onPress={onDismiss}
+          onPress={() => { haptic.warning(); onDismiss?.(); }}
           disabled={busy}
         >
           <Text style={[styles.confirmCardBtnText, { color: theme.textPrimary }]}>Deny</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.confirmCardBtn, styles.confirmCardApproveBtn, { backgroundColor: theme.brandStrong }]}
-          onPress={handleApprove}
+          onPress={() => { haptic.success(); handleApprove(); }}
           disabled={busy}
         >
           {busy ? (
@@ -285,7 +286,7 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
             !!message.content && (
               <Text
                 style={[
-                  { color: textColor, fontSize: 15, lineHeight: 21 },
+                  { color: textColor, fontSize: 17, lineHeight: 22, letterSpacing: -0.41 },
                   (message.local_image_path || message.local_attachment_path) && styles.bubbleTextAfterImage,
                 ]}
               >
@@ -645,14 +646,14 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      <View style={styles.header}>
+      <FrostedBar theme={theme} style={[styles.header, { borderBottomColor: theme.separator }]}>
         <TouchableOpacity
-          onPress={onOpenSidebar}
+          onPress={() => { haptic.light(); onOpenSidebar?.(); }}
           hitSlop={12}
-          style={[styles.chromeCircle, { backgroundColor: theme.chromeButton }]}
+          style={styles.chromeCircle}
           accessibilityLabel="Open menu"
         >
-          <Ionicons name="menu-outline" size={22} color={theme.textPrimary} />
+          <Ionicons name="list" size={24} color={theme.brand} />
         </TouchableOpacity>
 
         <View style={[styles.modeSwitcher, { backgroundColor: theme.modeTrack }]}>
@@ -665,8 +666,9 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             return (
               <TouchableOpacity
                 key={mode.key}
-                style={[styles.modeSegment, selected && { backgroundColor: theme.modeSelected }]}
+                style={[styles.modeSegment, selected && [styles.modeSegmentSelected, { backgroundColor: theme.modeSelected }]]}
                 onPress={() => {
+                  haptic.select();
                   if (mode.key === 'chat') return;
                   if (mode.key === 'plan') onOpenPlan?.(null);
                   if (mode.key === 'browse') onOpenBrowserAgent?.();
@@ -678,7 +680,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
                 <Text
                   style={[
                     styles.modeSegmentText,
-                    { color: selected ? theme.textPrimary : theme.textTertiary },
+                    { color: theme.textPrimary, fontWeight: selected ? '600' : '500' },
                   ]}
                 >
                   {mode.label}
@@ -689,14 +691,14 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </View>
 
         <TouchableOpacity
-          onPress={onNewChat}
+          onPress={() => { haptic.light(); onNewChat?.(); }}
           hitSlop={12}
-          style={[styles.chromeCircle, { backgroundColor: theme.chromeButton }]}
+          style={styles.chromeCircle}
           accessibilityLabel="New chat"
         >
-          <Ionicons name="create-outline" size={20} color={theme.textPrimary} />
+          <Ionicons name="create-outline" size={24} color={theme.brand} />
         </TouchableOpacity>
-      </View>
+      </FrostedBar>
 
       {error && (
         <TouchableOpacity
@@ -861,28 +863,28 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         </View>
       )}
 
-      <View style={[styles.composerWrap, { backgroundColor: theme.background }]}>
-        <View style={[styles.composerCard, { backgroundColor: theme.composer }]}>
+      <FrostedBar theme={theme} style={[styles.composerWrap, { borderTopColor: theme.separator }]}>
+        <View style={[styles.composerCard, { backgroundColor: theme.composer, borderColor: theme.composerBorder }]}>
           <TextInput
             style={[styles.textInput, { color: theme.textPrimary }]}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask anything…"
+            placeholder="Message"
             placeholderTextColor={theme.textTertiary}
             multiline
             maxLength={8000}
           />
           <View style={styles.composerControls}>
             <TouchableOpacity
-              style={[styles.plusButton, { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface }]}
-              onPress={() => setAttachmentVisible(true)}
+              style={[styles.plusButton, { backgroundColor: theme.fill }]}
+              onPress={() => { haptic.light(); setAttachmentVisible(true); }}
               accessibilityLabel="Add attachment"
             >
-              <Ionicons name="add" size={22} color={theme.textPrimary} />
+              <Ionicons name="add" size={22} color={theme.textSecondary} />
             </TouchableOpacity>
 
-            <View style={[styles.modelPill, { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface }]}>
-              <Ionicons name="rocket-outline" size={14} color={theme.textSecondary} />
+            <View style={[styles.modelPill, { backgroundColor: theme.fill }]}>
+              <Ionicons name="sparkles" size={13} color={theme.brand} />
               <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
                 {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
               </Text>
@@ -891,10 +893,10 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             <TouchableOpacity
               style={[
                 styles.browserToggle,
-                { backgroundColor: theme.mode === 'dark' ? '#0A0A0A' : theme.surface },
+                { backgroundColor: theme.fill },
                 preferences.browser_access_enabled && { backgroundColor: theme.infoSoft },
               ]}
-              onPress={() => setBrowserAccessEnabled(!preferences.browser_access_enabled)}
+              onPress={() => { haptic.select(); setBrowserAccessEnabled(!preferences.browser_access_enabled); }}
               onLongPress={() => onOpenBrowserAgent?.()}
               hitSlop={4}
               accessibilityRole="button"
@@ -902,9 +904,9 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
               accessibilityLabel="Toggle browser access on or off. Long-press to open the live browser view."
             >
               <Ionicons
-                name="globe-outline"
+                name={preferences.browser_access_enabled ? 'globe' : 'globe-outline'}
                 size={18}
-                color={preferences.browser_access_enabled ? theme.brand : theme.textTertiary}
+                color={preferences.browser_access_enabled ? theme.brand : theme.textSecondary}
               />
             </TouchableOpacity>
 
@@ -925,28 +927,28 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
               >
                 {editingMessageId ? (
                   <TouchableOpacity
-                    style={[styles.sendPill, { backgroundColor: theme.speak }]}
-                    onPress={handleSaveEdit}
+                    style={[styles.sendCircle, { backgroundColor: theme.speak }]}
+                    onPress={() => { haptic.medium(); handleSaveEdit(); }}
                     disabled={!hasText}
+                    accessibilityLabel="Save edit"
                   >
                     <Ionicons name="checkmark" size={18} color={theme.speakText} />
-                    <Text style={[styles.sendPillText, { color: theme.speakText }]}>Save</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    style={[styles.sendPill, { backgroundColor: theme.speak }, isSending && { opacity: 0.6 }]}
-                    onPress={handleSend}
+                    style={[styles.sendCircle, { backgroundColor: isSending ? theme.sendDisabled : theme.speak }]}
+                    onPress={() => { haptic.medium(); handleSend(); }}
                     disabled={!hasText || isSending}
+                    accessibilityLabel="Send"
                   >
-                    <Ionicons name="arrow-up" size={16} color={theme.speakText} />
-                    <Text style={[styles.sendPillText, { color: theme.speakText }]}>Send</Text>
+                    <Ionicons name="arrow-up" size={18} color={theme.speakText} />
                   </TouchableOpacity>
                 )}
               </Animated.View>
             </View>
           </View>
         </View>
-      </View>
+      </FrostedBar>
 
       <AttachmentSheet
         visible={attachmentVisible}
@@ -999,33 +1001,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   chromeCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeSwitcher: {
     flex: 1,
     flexDirection: 'row',
-    borderRadius: 999,
-    padding: 3,
-    maxWidth: 280,
+    borderRadius: 9,
+    padding: 2,
+    maxWidth: 260,
+  },
+  modeSegmentSelected: {
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   modeSegment: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingVertical: 6,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeSegmentText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: -0.08,
   },
   messageList: {
     paddingVertical: 16,
@@ -1049,8 +1060,9 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '12deg' }],
   },
   emptyTitle: {
-    fontSize: 26,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: 0.36,
   },
   emptySubtitle: {
     marginTop: 8,
@@ -1099,9 +1111,9 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '100%',
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    borderRadius: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
   },
   bubblePlainAssistant: {
     backgroundColor: 'transparent',
@@ -1297,15 +1309,17 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   composerWrap: {
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 10,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   composerCard: {
-    borderRadius: 24,
-    paddingTop: 10,
-    paddingHorizontal: 12,
-    paddingBottom: 10,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+    paddingHorizontal: 10,
+    paddingBottom: 8,
   },
   composerControls: {
     flexDirection: 'row',
@@ -1314,9 +1328,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   plusButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1324,8 +1338,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: 999,
   },
   modelPillText: {
@@ -1340,15 +1354,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   textInput: {
-    fontSize: 15,
+    fontSize: 17,
+    letterSpacing: -0.41,
     maxHeight: 100,
     paddingVertical: 4,
     paddingHorizontal: 4,
     minHeight: 28,
   },
   actionSlot: {
-    minWidth: 88,
-    height: 40,
+    minWidth: 34,
+    height: 34,
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
@@ -1363,6 +1378,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
+  },
+  sendCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sendPillText: {
     fontSize: 14,
