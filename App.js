@@ -23,6 +23,10 @@ import { AmbientBackground } from './src/ui/ios';
 import { useTheme, useResolvedThemeMode } from './src/theme/useTheme';
 import { SharedPluginInstallSheet } from './src/components/settings/SharedPluginInstallSheet';
 
+import { MAX_FONT_SIZE_MULTIPLIER } from './src/theme/tokens';
+if (Text.defaultProps == null) Text.defaultProps = {};
+Text.defaultProps.maxFontSizeMultiplier = MAX_FONT_SIZE_MULTIPLIER;
+
 function AppShell() {
   const theme = useTheme();
   const resolvedMode = useResolvedThemeMode();
@@ -372,6 +376,9 @@ function AppShell() {
               onNewChat={handleNewChat}
               activeMode="chat"
               browserAgentActive={isAgentRunning || awaitingHuman}
+              userName={(usePreferencesStore.getState().preferences?.display_name
+                || usePreferencesStore.getState().preferences?.user_name
+                || '').split(' ')[0] || undefined}
             />
           )}
           {screen === 'settings' && (

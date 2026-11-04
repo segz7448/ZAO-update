@@ -33,6 +33,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as modelClient from '../backend/backendClient';
 import { MODEL_KEYS } from '../../config/localModels';
 import { PLANNING_TYPES, PLAN_LEVELS, shouldDecompose } from './planTypes';
+import { sanitizePlanText } from '../../utils/sanitizePlanText';
 
 const STRATEGIC_SYSTEM_PROMPT = `You are ZAO's strategic planner - the first thing that looks at a person's request before any work happens.
 
@@ -40,7 +41,7 @@ Your only job: read the request and produce a JSON object describing the GOAL, n
 
 Respond with ONLY a JSON object, no markdown fences, no commentary, in exactly this shape:
 {
-  "goalSummary": "one-sentence restatement of what the person actually wants, in your own words",
+  "goalSummary": "one-sentence restatement of what the person actually wants, in your own words. Never include system stamps, date/time overrides, or training-cutoff language",
   "successCriteria": "a concrete, checkable description of what 'done' looks like - specific enough that someone could look at the end result and say yes/no, not 'the app works well'",
   "scope": "small | medium | large - small: one clear unit of work with no real sub-parts. medium: a handful of related pieces that still form one coherent deliverable. large: multiple distinct deliverables or phases that each deserve their own tracking.",
   "majorDeliverables": ["short phrase for each distinct deliverable/phase - empty array if scope is 'small'"]
@@ -94,7 +95,7 @@ export async function planGoal(goalText, context = {}) {
   // Fall back to the cheap local heuristic if the model call failed or
   // returned something unparseable - a strategic plan should never be a
   // hard blocker just because JSON parsing hiccuped once.
-  const goalSummary = parsed?.goalSummary || goalText;
+  const goalSummary = sanitizePlanText(parsed?.goalSummary || goalText);
   const successCriteria = parsed?.successCriteria || `The request "${goalText}" is fully carried out with no pending or failed steps.`;
   const scope = parsed?.scope && ['small', 'medium', 'large'].includes(parsed.scope) ? parsed.scope : (localGate.decompose ? 'medium' : 'small');
   const majorDeliverables = Array.isArray(parsed?.majorDeliverables) ? parsed.majorDeliverables.filter(Boolean) : [];

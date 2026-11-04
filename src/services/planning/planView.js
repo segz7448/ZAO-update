@@ -1,3 +1,4 @@
+import { sanitizePlanText } from '../../utils/sanitizePlanText';
 /**
  * ZAO - pure view logic for the Plans home + plan detail (no React, no DB).
  * Everything here works on real rows from database.js (getPlanSummaries /
@@ -105,13 +106,30 @@ export function planElapsed(plan, now = Date.now()) {
 }
 
 export function formatDuration(ms) {
-  if (ms == null) return null;
-  const s = Math.round(ms / 1000);
+  if (ms == null || Number.isNaN(ms)) return null;
+  const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60); const r = s % 60;
   if (m < 60) return r ? `${m}m ${r}s` : `${m}m`;
   const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
+  if (h < 48) return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  if (d < 14) return `${d}d ${h % 24}h`;
+  if (d < 60) return `${d}d`;
+  const mo = Math.floor(d / 30);
+  if (mo < 24) return `${mo}mo`;
+  return `${Math.floor(mo / 12)}y`;
+}
+
+/** Planning/running with no progress for >30 minutes → treat as stalled in UI. */
+export const STALL_MS = 30 * 60 * 1000;
+export function isPlanStalled(plan, now = Date.now()) {
+  if (!plan) return false;
+  const status = plan.status || plan.rollup_status;
+  if (!['planning', 'running', 'recovering'].includes(status)) return false;
+  const anchor = plan.last_activity_at || plan.updated_at || plan.started_at || plan.created_at;
+  if (!anchor) return false;
+  return (now - anchor) > STALL_MS;
 }
 
 export function formatAgo(ts, now = Date.now()) {
@@ -195,4 +213,10 @@ export function completionSummary(plan, now = Date.now()) {
     calls: steps.reduce((n, s) => n + (s.actions || []).filter((a) => a.entry_type !== 'reasoning').length, 0),
     elapsed: formatDuration(planElapsed(plan, now)),
   };
+}
+
+/** Display goal with SYSTEM stamp stripped. */
+export function displayGoal(planOrGoal) {
+  const g = typeof planOrGoal === 'string' ? planOrGoal : planOrGoal?.goal;
+  return sanitizePlanText(g || '') || 'Untitled plan';
 }

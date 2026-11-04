@@ -1167,6 +1167,25 @@ export async function initDatabase() {
       // Expected on any install that already has this column - not an error.
     }
 
+    // Migration: strip SYSTEM date/time stamps that leaked into plan.goal
+    // when standing-context was historically prepended into planner turns.
+    try {
+      const { sanitizePlanText, looksContaminated } = require('../utils/sanitizePlanText');
+      const dirty = await db.getAllAsync(
+        `SELECT id, goal FROM plans WHERE goal LIKE '%SYSTEM%ALWAYS TRUE%' OR goal LIKE '%real current date and time%'`
+      );
+      for (const row of dirty || []) {
+        if (!looksContaminated(row.goal)) continue;
+        const clean = sanitizePlanText(row.goal);
+        if (clean && clean !== row.goal) {
+          await db.runAsync(`UPDATE plans SET goal = ? WHERE id = ?`, [clean, row.id]);
+        }
+      }
+      if (dirty?.length) console.log(`[DB] Sanitized ${dirty.length} contaminated plan goal(s)`);
+    } catch (migrationErr) {
+      console.warn('[DB] Migration sanitize plan goals skipped:', migrationErr?.message || migrationErr);
+    }
+
     // Ensure a default preferences row exists
     await db.runAsync(
       `INSERT OR IGNORE INTO user_preferences (id, ai_mode, theme_preference, updated_at) VALUES (1, 'auto', 'auto', ?)`,
@@ -2148,15 +2167,17 @@ export async function createPlan(id, { conversationId = null, goal, level = 'exe
     const db = await getDb();
     if (!db) return { success: false, error: 'DB_OPEN_FAILED', data: null };
 
+    const { sanitizePlanText } = require('../utils/sanitizePlanText');
+    const cleanGoal = sanitizePlanText(goal);
     const now = Date.now();
     await db.runAsync(
       `INSERT INTO plans (id, conversation_id, goal, status, level, plan_type, parent_plan_id, parent_step_id, success_criteria, created_at, updated_at)
        VALUES (?, ?, ?, 'planning', ?, ?, ?, ?, ?, ?, ?)`,
-      [id, conversationId, goal, level, planType, parentPlanId, parentStepId, successCriteria, now, now]
+      [id, conversationId, cleanGoal, level, planType, parentPlanId, parentStepId, successCriteria, now, now]
     );
     return {
       success: true,
-      data: { id, conversation_id: conversationId, goal, status: 'planning', level, plan_type: planType, parent_plan_id: parentPlanId, parent_step_id: parentStepId, success_criteria: successCriteria, created_at: now, updated_at: now },
+      data: { id, conversation_id: conversationId, goal: cleanGoal, status: 'planning', level, plan_type: planType, parent_plan_id: parentPlanId, parent_step_id: parentStepId, success_criteria: successCriteria, created_at: now, updated_at: now },
       error: null,
     };
   } catch (err) {
@@ -2329,10 +2350,12 @@ export async function getPlanSummaries(limit = 100) {
     const cur = new Map(); for (const r of current || []) if (!cur.has(r.root_id)) cur.set(r.root_id, r);
     const leafStatuses = new Map();
     for (const r of leaves || []) { if (!leafStatuses.has(r.root_id)) leafStatuses.set(r.root_id, []); leafStatuses.get(r.root_id).push(r.status); }
+    const { sanitizePlanText } = require('../utils/sanitizePlanText');
     const data = roots.map((p) => {
       const a = steps.get(p.id) || {}; const m = ms.get(p.id) || {}; const c = cur.get(p.id);
       return {
         ...p,
+        goal: sanitizePlanText(p.goal),
         total_steps: a.total_steps || 0,
         done_steps: a.done_steps || 0,
         failed_steps: a.failed_steps || 0,

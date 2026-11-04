@@ -29,19 +29,26 @@ export const fontFamily = Platform.select({
   default: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
 });
 
-/** iOS 18 Dynamic Type (Large / default) */
+/**
+ * App type scale — Muse / iOS Messages sizes (not Dynamic Type XXXL).
+ * largeTitle only for screen titles; body/chat at 15–16/400.
+ * Cap Android system font with maxFontSizeMultiplier ≈ 1.2 globally.
+ */
 export const typography = {
-  largeTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41, letterSpacing: 0.37 },
-  title: { fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: 0.36 },
-  title2: { fontSize: 22, fontWeight: '700', lineHeight: 28, letterSpacing: 0.35 },
+  largeTitle: { fontSize: 28, fontWeight: '700', lineHeight: 34, letterSpacing: 0.36 },
+  title: { fontSize: 22, fontWeight: '700', lineHeight: 28, letterSpacing: 0.35 },
+  title2: { fontSize: 20, fontWeight: '600', lineHeight: 25, letterSpacing: 0.28 },
   headline: { fontSize: 17, fontWeight: '600', lineHeight: 22, letterSpacing: -0.41 },
-  body: { fontSize: 17, fontWeight: '400', lineHeight: 22, letterSpacing: -0.41 },
-  callout: { fontSize: 16, fontWeight: '400', lineHeight: 21, letterSpacing: -0.32 },
-  subhead: { fontSize: 15, fontWeight: '400', lineHeight: 20, letterSpacing: -0.24 },
+  body: { fontSize: 16, fontWeight: '400', lineHeight: 21, letterSpacing: -0.32 },
+  callout: { fontSize: 15, fontWeight: '400', lineHeight: 20, letterSpacing: -0.24 },
+  subhead: { fontSize: 14, fontWeight: '400', lineHeight: 19, letterSpacing: -0.16 },
   footnote: { fontSize: 13, fontWeight: '400', lineHeight: 18, letterSpacing: -0.08 },
-  caption: { fontSize: 12, fontWeight: '400', lineHeight: 16, letterSpacing: 0 },
+  caption: { fontSize: 11, fontWeight: '400', lineHeight: 13, letterSpacing: 0.06 },
   micro: { fontSize: 11, fontWeight: '600', lineHeight: 13, letterSpacing: 0.07 },
+  monoLabel: { fontSize: 15, fontWeight: '500', lineHeight: 18, letterSpacing: 1.2, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) },
 };
+
+export const MAX_FONT_SIZE_MULTIPLIER = 1.2;
 
 /** iOS Settings icon-tile palette */
 export const tileColors = {
@@ -70,11 +77,11 @@ export const springs = {
 
 export const lightTheme = {
   mode: 'light',
-  background: '#FCFCFC',          // Grok Bot home/chat
-  groupedBackground: '#F7F7F7',   // Grok Bot profile canvas
+  background: '#F2F2F7',          // iOS grouped background (solid)
+  groupedBackground: '#F2F2F7',
   surface: '#FFFFFF',
-  surfaceAlt: '#F7F7F7',
-  secondarySystemBackground: '#F7F7F7',
+  surfaceAlt: '#E5E5EA',
+  secondarySystemBackground: '#F2F2F7',
   tertiarySystemBackground: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
   composer: '#FFFFFF',
@@ -83,19 +90,22 @@ export const lightTheme = {
   separator: '#F3F3F3',           // Grok Bot row divider
   borderStrong: '#E7E7E8',
   fill: '#EFEFF0',
-  barTint: 'rgba(252,252,252,0.86)',
+  barTint: '#F2F2F7',
   blurTint: 'light',
-  // Glass pass: translucent fills over the ambient orb background (BlurView on iOS).
-  glassFill: 'rgba(255,255,255,0.55)',
-  glassFillStrong: 'rgba(255,255,255,0.72)',
-  glassFillAndroid: 'rgba(255,255,255,0.82)', // no live blur on Android: denser fill keeps AA contrast
-  glassHighlight: 'rgba(255,255,255,0.6)',
-  glassShadowOpacity: 0.10,
-  glassBlurIntensity: 40,
-  glassSelected: 'rgba(255,255,255,0.85)',
-  userBubbleGlass: 'rgba(11,11,11,0.86)',
+  // Surfaces are SOLID opaque. Frosted glass is icons-only (iconGlass*).
+  glassFill: '#FFFFFF',
+  glassFillStrong: '#FFFFFF',
+  glassFillAndroid: '#FFFFFF',
+  glassHighlight: 'rgba(0,0,0,0.06)',
+  glassShadowOpacity: 0.06,
+  glassBlurIntensity: 0,
+  glassSelected: '#FFFFFF',
+  card: '#FFFFFF',
+  userBubbleGlass: '#0B0B0B',
   userBubbleHighlight: 'rgba(255,255,255,0.18)',
-  ambientBase: '#EEE8F5',
+  ambientBase: '#F2F2F7',
+  iconGlass: 'rgba(255,255,255,0.55)',
+  iconGlassBorder: 'rgba(255,255,255,0.65)',
 
   textPrimary: '#000000',
   textSecondary: '#636366',       // darkened for WCAG AA on glass (≈5.2:1)
@@ -152,8 +162,8 @@ export const lightTheme = {
 
 export const darkTheme = {
   mode: 'dark',
-  background: '#0A0A0A',          // Muse dark canvas
-  groupedBackground: '#0A0A0A',
+  background: '#000000',          // Muse dark canvas
+  groupedBackground: '#000000',
   surface: '#1C1C1C',
   surfaceAlt: '#272727',
   secondarySystemBackground: '#272727', // Muse sheet
@@ -165,18 +175,21 @@ export const darkTheme = {
   separator: 'rgba(255,255,255,0.08)',
   borderStrong: '#3C3B3B',
   fill: '#262626',
-  barTint: 'rgba(10,10,10,0.86)',
+  barTint: '#000000',
   blurTint: 'dark',
-  glassFill: 'rgba(28,28,30,0.5)',
-  glassFillStrong: 'rgba(28,28,30,0.68)',
-  glassFillAndroid: 'rgba(28,28,30,0.84)',
-  glassHighlight: 'rgba(255,255,255,0.12)',
+  glassFill: '#1C1C1E',
+  glassFillStrong: '#1C1C1E',
+  glassFillAndroid: '#1C1C1E',
+  card: '#1C1C1E',
+  glassHighlight: 'rgba(255,255,255,0.08)',
   glassShadowOpacity: 0.35,
   glassBlurIntensity: 50,
-  glassSelected: 'rgba(255,255,255,0.14)',
-  userBubbleGlass: 'rgba(48,48,52,0.82)',
+  glassSelected: '#2C2C2E',
+  userBubbleGlass: '#2C2C2E',
   userBubbleHighlight: 'rgba(255,255,255,0.14)',
-  ambientBase: '#0B1220',
+  ambientBase: '#000000',
+  iconGlass: 'rgba(255,255,255,0.14)',
+  iconGlassBorder: 'rgba(255,255,255,0.22)',
 
   textPrimary: '#FFFFFF',
   textSecondary: '#9A9A9E',

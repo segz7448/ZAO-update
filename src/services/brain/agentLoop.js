@@ -127,7 +127,7 @@ export async function runAgentLoop(params, handlers, { isCancelled = () => false
   const realTimeBlock = timeResult.success
     ? {
         role: 'system',
-        content: `[SYSTEM - ALWAYS TRUE, OVERRIDES YOUR OWN TRAINING]: The real current date and time, just checked, is ${timeResult.data.formatted} (${timeResult.data.zoneName}). Your training data has a cutoff long before this and cannot know anything that happened after it. Whenever your answer touches the date, time, "current"/"latest"/"today", or anything that could have changed since training - trust ONLY this stamp and any tool results you're given, never your own training-data sense of what year or date it is. Do not say "as of my last update" or similar - that phrasing was written for a version of you without this information. If you're unsure whether something needs a live check (news, prices, current tools/versions, "is X still true"), use the web_search tool rather than guessing from training.`,
+        content: `Current date and time (authoritative for this session): ${timeResult.data.formatted} (${timeResult.data.zoneName}). Prefer this over training-cutoff assumptions for "today", "current", or "latest". Do not paste this stamp into goal summaries, plan titles, or user-visible headings. Use web_search when a live check is needed.`,
       }
     : null;
 

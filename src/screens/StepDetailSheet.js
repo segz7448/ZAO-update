@@ -1,5 +1,5 @@
 /**
- * ZAO - Step Detail Sheet (glass). Real data from one plan_steps row with
+ * ZAO - Step Detail Sheet (solid Muse sheet). Real data from one plan_steps row with
  * `.actions` (getPlan): thought process (step.reasoning), what the step
  * does (description / action / target), the tool-call chain from
  * plan_step_actions (collapsible monospace input_json / output_json with
@@ -36,20 +36,18 @@ export default function StepDetailSheet({ step, visible, onClose, theme }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={1} style={styles.scrim} onPress={onClose} accessibilityLabel="Close step details" />
-      <View style={[styles.sheet, glassSurface(theme, 28), { backgroundColor: theme.background }]}>
-        <GlassFill theme={theme} radius={28} strong />
+      <View style={[styles.sheet, { backgroundColor: theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF'), borderTopLeftRadius: 28, borderTopRightRadius: 28 }]}>
         <Grabber theme={theme} />
         <View style={styles.head}>
-          <AppIconTile k={step.domain} size={40} />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={3}>{step.description}</Text>
+            <Text style={[styles.title, { color: theme.mode === 'dark' ? '#A1A1A6' : '#5a5a5a' }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{step.description}</Text>
             <View style={styles.headMeta}>
-              <StatusGlyph status={step.status} theme={theme} size={15} />
-              <Text style={[styles.meta, { color: statusColor(theme, step.status) }]}>{labelFor(step.status)}</Text>
-              <Text style={[styles.meta, { color: theme.textTertiary }]}>· {iconFor(step.domain).label}{dur != null ? ` · ${formatDuration(dur)}` : ''}</Text>
+              <StatusGlyph status={step.status} theme={theme} size={18} />
+              <Text style={[styles.meta, { color: statusColor(theme, step.status) }]} maxFontSizeMultiplier={1.2}>{labelFor(step.status)}</Text>
+              <Text style={[styles.meta, { color: theme.textTertiary }]} maxFontSizeMultiplier={1.2}>· {iconFor(step.domain).label}{dur != null ? ` · ${formatDuration(dur)}` : ''}</Text>
             </View>
           </View>
-          <CircleButton theme={theme} icon="close" size={34} iconSize={18} label="Close" onPress={onClose} />
+          <CircleButton theme={theme} icon="close" size={36} iconSize={18} label="Close" onPress={onClose} />
         </View>
         <ScrollView contentContainerStyle={styles.body}>
           {step.is_risky ? <View style={{ flexDirection: 'row', marginBottom: 12 }}><Capsule theme={theme} icon="shield-half" label={step.risk_reason || 'Risky step'} color={statusColor(theme, 'awaiting_approval')} /></View> : null}

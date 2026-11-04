@@ -216,7 +216,7 @@ function PendingToolConfirmCard({ pendingConfirmation, onApprove, onDismiss, the
   );
 }
 
-function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps, onOpenPlan, onApproveCommand, onDismissCommand, onToast, onGoChat }) {
+function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps, onOpenPlan, onApproveCommand, onDismissCommand, onToast, onGoChat, onRetryError }) {
   const isUser = message.role === 'user';
   const textColor = isUser ? theme.bubbleUserText : theme.bubbleAssistantText;
   const bubbleRef = useRef(null);
@@ -286,7 +286,7 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
             !!message.content && (
               <Text
                 style={[
-                  { color: textColor, fontSize: 17, lineHeight: 22, letterSpacing: -0.41 },
+                  { color: textColor, fontSize: 16, lineHeight: 21, letterSpacing: -0.32 },
                   (message.local_image_path || message.local_attachment_path) && styles.bubbleTextAfterImage,
                 ]}
               >
@@ -302,6 +302,16 @@ function MessageBubble({ message, theme, onLongPress, onImagePress, actionsProps
               borderColor={theme.borderStrong}
             />
           )}
+          {!isUser && message.is_error ? (
+            <TouchableOpacity
+              onPress={() => { haptic.light(); onRetryError?.(message); }}
+              style={{ marginTop: 10, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, backgroundColor: theme.mode === 'dark' ? '#2C2C2E' : '#E5E5EA' }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry"
+            >
+              <Text style={{ color: theme.textPrimary, fontSize: 14, fontWeight: '600' }} maxFontSizeMultiplier={1.2}>Retry</Text>
+            </TouchableOpacity>
+          ) : null}
           {!isUser && message.plugin_preview ? (
             <View style={{ marginTop: 10 }}>
               <PluginPreviewCard
@@ -455,7 +465,7 @@ function formatBrowsingStepLabel(stepInfo) {
   }
 }
 
-export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, onTakeOverBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
+export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, onTakeOverBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = '', activeMode = 'chat' }) {
   const theme = useTheme();
   // Inline browser cards (browserCardStore, fed by App's one BrowserAgentStream).
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -802,6 +812,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
               onRegenerate: handleRegenerateMessage,
               isRegenerating: regeneratingMessageId === item.id,
             }}
+          onRetryError={(msg) => { regenerateMessage?.(msg.id); }}
           />
         )}
         contentContainerStyle={styles.messageList}
@@ -811,7 +822,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
               <Ionicons name="flash-outline" size={28} color={theme.textTertiary} />
             </View>
             <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
-              {getGreeting()}, {userName}
+              {userName ? `${getGreeting()}, ${userName}` : getGreeting()}
             </Text>
             <Text style={[styles.emptySubtitle, { color: theme.textTertiary }]}>
               Ask anything
@@ -1190,7 +1201,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '12deg' }],
   },
   emptyTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
     letterSpacing: 0.36,
   },
@@ -1266,11 +1277,7 @@ const styles = StyleSheet.create({
   bubbleFooter: {
     flexDirection: 'row',
   },
-  modelTag: {
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: '600',
-  },
+  modelTag: { fontSize: 11, fontWeight: '500', letterSpacing: 0.2, opacity: 0.55, marginTop: 4 },
   editedTag: {
     fontSize: 11,
     marginTop: 4,

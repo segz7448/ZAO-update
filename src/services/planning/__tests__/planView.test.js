@@ -1,4 +1,4 @@
-import { groupPlans, filterPlans, pickAutoOpen, stepProgress, summaryProgress, stepDuration, formatDuration, formatAgo, milestoneStates, stepTree, dockState, stepHistory, summaryStatus, rollupStatus, completionSummary } from '../planView';
+import { groupPlans, filterPlans, pickAutoOpen, stepProgress, summaryProgress, stepDuration, formatDuration, formatAgo, milestoneStates, stepTree, dockState, stepHistory, summaryStatus, rollupStatus, completionSummary, isPlanStalled, displayGoal } from '../planView';
 
 const P = (id, status, extra = {}) => ({ id, goal: `Goal ${id}`, status, level: 'execution', updated_at: 1000, last_activity_at: 1000, ...extra });
 
@@ -61,6 +61,8 @@ describe('progress + time', () => {
     expect(formatDuration(4200)).toBe('4s');
     expect(formatDuration(125000)).toBe('2m 5s');
     expect(formatDuration(3720000)).toBe('1h 2m');
+    expect(formatDuration(1747 * 3600 * 1000)).toBe('2mo');
+    expect(formatDuration(50 * 3600 * 1000)).toBe('2d 2h');
     expect(formatDuration(null)).toBeNull();
     expect(formatAgo(1000, 11000)).toBe('just now');
     expect(formatAgo(0, 1)).toBe('');
@@ -102,4 +104,19 @@ it('stepHistory uses only real timestamps and skips reasoning entries', () => {
 
 it('completionSummary', () => {
   expect(completionSummary({ status: 'completed', created_at: 1000, completed_at: 66000, steps: [{ status: 'done', actions: [{ entry_type: 'tool_call' }, { entry_type: 'reasoning' }] }, { status: 'skipped' }] })).toEqual({ done: 1, skipped: 1, total: 2, calls: 1, elapsed: '1m 5s' });
+});
+
+describe('isPlanStalled', () => {
+  it('flags planning with no activity for >30m', () => {
+    const now = 1_000_000_000_000;
+    expect(isPlanStalled({ status: 'planning', last_activity_at: now - 31 * 60 * 1000 }, now)).toBe(true);
+    expect(isPlanStalled({ status: 'planning', last_activity_at: now - 5 * 60 * 1000 }, now)).toBe(false);
+    expect(isPlanStalled({ status: 'completed', last_activity_at: now - 60 * 60 * 1000 }, now)).toBe(false);
+  });
+});
+
+describe('displayGoal', () => {
+  it('strips SYSTEM contamination from goals', () => {
+    expect(displayGoal({ goal: '[SYSTEM - ALWAYS TRUE]: The real current date and time, just checked, is X. Build the app' })).toBe('Build the app');
+  });
 });

@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { haptic, CircleButton, GlassFill } from '../ui/ios';
+import { haptic, CircleButton } from '../ui/ios';
 import { useTheme } from '../theme/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -148,11 +148,10 @@ export default function SidebarDrawer({
       <Animated.View
         style={[
           styles.drawer,
-          { backgroundColor: 'transparent', borderRightWidth: 1, borderRightColor: theme.glassHighlight, transform: [{ translateX }] },
+          { backgroundColor: theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF'), borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: theme.separator, transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
-        <GlassFill theme={theme} radius={0} strong intensity={60} />
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           {/* v2: Grok Bot home header - user avatar top-left, white + circle right */}
           <View style={styles.header}>
@@ -165,7 +164,7 @@ export default function SidebarDrawer({
             <CircleButton theme={theme} icon="add" iconSize={24} label="New chat" onPress={onNewChat} />
           </View>
 
-          <View style={[styles.searchField, { backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: theme.glassHighlight }]}>
+          <View style={[styles.searchField, { backgroundColor: theme.mode === 'dark' ? '#2C2C2E' : '#F2F2F7', borderWidth: StyleSheet.hairlineWidth, borderColor: theme.separator }]}>
             <Ionicons name="search-outline" size={17} color={theme.textSecondary} />
             <Text style={[styles.searchText, { color: theme.textSecondary }]}>Search</Text>
           </View>
@@ -212,10 +211,7 @@ export default function SidebarDrawer({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
   drawer: {
     position: 'absolute',
     top: 0,

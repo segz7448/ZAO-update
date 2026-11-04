@@ -369,7 +369,7 @@ async function sendChatCompletionWithRetry(baseUrl, token, body) {
           await sleep(retryDelayMs(response, attempt));
           continue;
         }
-        return { success: false, data: null, error: { type: ERROR_TYPES.INFERENCE_ERROR, message: 'OpenRouter is rate-limiting Ox Alpha right now (HTTP 429) - this is common on the free/stealth preview tier under real usage. Try again in a moment, or check your rate-limit tier at openrouter.ai/keys.' } };
+        return { success: false, data: null, error: { type: ERROR_TYPES.INFERENCE_ERROR, code: 'RATE_LIMIT', retryable: true, message: 'ZAO is busy right now. Wait a few seconds and tap Retry.' } };
       }
 
       if (response.status === 401) {
@@ -408,8 +408,8 @@ async function sendChatCompletionWithRetry(baseUrl, token, body) {
         error: {
           type: isNetworkError ? ERROR_TYPES.BACKEND_UNREACHABLE : ERROR_TYPES.UNKNOWN,
           message: isNetworkError
-            ? `Can't reach the ZAO backend. Make sure the server is running on the VM and the IP/API key in Settings > Server Connection are correct.`
-            : err?.message || 'Backend request failed.',
+            ? `Can't reach ZAO right now. Check your connection and tap Retry.`
+            : err?.message || 'Something went wrong. Tap Retry to try again.',
         },
       };
     }

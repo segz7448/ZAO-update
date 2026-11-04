@@ -28,18 +28,54 @@ export function statusColor(theme, status) {
 }
 
 /** SF-style status glyph: checkmark.circle.fill / xmark.octagon / spinner / exclamationmark.triangle / lock / pause. */
-export function StatusGlyph({ status, theme, size = 22 }) {
+export function StatusGlyph({ status, theme, size = 22, animateIn = false }) {
   const c = statusColor(theme, status);
+  const rm = useReduceMotion();
+  const pop = useRef(new Animated.Value(animateIn && !rm ? 0 : 1)).current;
+  useEffect(() => {
+    if (!animateIn || rm) { pop.setValue(1); return; }
+    pop.setValue(0);
+    Animated.spring(pop, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+  }, [animateIn, status, rm, pop]);
+  let glyph;
   switch (status) {
-    case 'done': case 'completed': case 'reached': return <Ionicons name="checkmark-circle" size={size} color={c} />;
-    case 'failed': case 'missed': return <MaterialCommunityIcons name="close-octagon" size={size} color={c} />;
-    case 'running': case 'recovering': case 'in_progress': case 'planning': return <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}><ProgressRing size={size - 4} color={c} track={`${c}33`} stroke={2.2} /></View>;
-    case 'awaiting_approval': return <Ionicons name="warning" size={size} color={c} />;
-    case 'blocked': return <Ionicons name="lock-closed" size={size - 2} color={c} />;
-    case 'paused': return <Ionicons name="pause-circle" size={size} color={c} />;
-    case 'skipped': case 'cancelled': return <Ionicons name="remove-circle-outline" size={size} color={c} />;
-    default: return <Ionicons name="ellipse-outline" size={size} color={c} />;
+    case 'done': case 'completed': case 'reached':
+      glyph = <Ionicons name="checkmark-circle-outline" size={size} color={c} />; break;
+    case 'failed': case 'missed':
+      glyph = <Ionicons name="close-circle-outline" size={size} color={c} />; break;
+    case 'running': case 'recovering': case 'in_progress': case 'planning':
+      glyph = <PulsingSpinner size={size} color={c} />; break;
+    case 'awaiting_approval': glyph = <Ionicons name="warning-outline" size={size} color={c} />; break;
+    case 'blocked': glyph = <Ionicons name="lock-closed-outline" size={size - 2} color={c} />; break;
+    case 'paused': glyph = <Ionicons name="pause-circle-outline" size={size} color={c} />; break;
+    case 'skipped': case 'cancelled': glyph = <Ionicons name="remove-circle-outline" size={size} color={c} />; break;
+    default: glyph = <Ionicons name="ellipse-outline" size={size} color={c} />; break;
   }
+  return (
+    <Animated.View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ scale: pop }] }}>
+      {glyph}
+    </Animated.View>
+  );
+}
+
+/** Spinner that pulses opacity while a step is running (respects reduce-motion). */
+function PulsingSpinner({ size, color }) {
+  const rm = useReduceMotion();
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (rm) return undefined;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 0.35, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [rm, pulse]);
+  return (
+    <Animated.View style={{ opacity: rm ? 1 : pulse, width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <ProgressRing size={size - 4} color={color} track={`${color}33`} stroke={2.2} />
+    </Animated.View>
+  );
 }
 
 /** Fraction ring (0..1), animated to its value; snaps under reduce-motion. */

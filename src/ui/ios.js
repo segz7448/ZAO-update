@@ -16,15 +16,8 @@ export const haptic = {
   warning: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); },
 };
 
-/** Frosted translucent bar; falls back to the semi-transparent barTint. */
+/** Solid chrome bar (no glass). Bars sit on opaque barTint. */
 export function FrostedBar({ theme, style, children, intensity = 80 }) {
-  if (Platform.OS === 'ios') {
-    return (
-      <BlurView tint={theme.blurTint} intensity={intensity} style={style}>
-        {children}
-      </BlurView>
-    );
-  }
   return <View style={[style, { backgroundColor: theme.barTint }]}>{children}</View>;
 }
 
@@ -36,16 +29,22 @@ const AMBIENT_LIGHT = require('../../assets/ui/ambient-light.png');
 const AMBIENT_DARK = require('../../assets/ui/ambient-dark.png');
 
 /**
- * Glass layer: absolutely fills its parent. iOS = live BlurView + translucent tint;
- * Android = denser translucent fill (no reliable live blur). Put it as the FIRST
- * child of a container styled with glassSurface().
+ * Solid card fill (legacy name GlassFill kept for call sites).
+ * Frosted BlurView is reserved for IconGlassFill / icon tiles only.
  */
 export function GlassFill({ theme, radius = 16, strong = false, intensity, shapeStyle }) {
-  const fill = Platform.OS === 'ios' ? (strong ? theme.glassFillStrong : theme.glassFill) : theme.glassFillAndroid;
+  const fill = theme.card || theme.glassFill || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF');
+  const shape = [StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden', backgroundColor: fill }, shapeStyle];
+  return <View pointerEvents="none" style={shape} />;
+}
+
+/** Frosted glass fill — ONLY for AppIconTile / icon chrome. */
+export function IconGlassFill({ theme, radius = 16, intensity = 40, shapeStyle }) {
+  const fill = theme.iconGlass || (theme.mode === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.55)');
   const shape = [StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }, shapeStyle];
   if (Platform.OS === 'ios') {
     return (
-      <BlurView pointerEvents="none" tint={theme.blurTint} intensity={intensity ?? theme.glassBlurIntensity} style={shape}>
+      <BlurView pointerEvents="none" tint={theme.blurTint} intensity={intensity} style={shape}>
         <View style={[StyleSheet.absoluteFill, { backgroundColor: fill }]} />
       </BlurView>
     );
@@ -53,27 +52,26 @@ export function GlassFill({ theme, radius = 16, strong = false, intensity, shape
   return <View pointerEvents="none" style={[shape, { backgroundColor: fill }]} />;
 }
 
-/** Container style for glass: 1px inner highlight border + soft shadow; fill comes from GlassFill. */
+/** Solid opaque card surface (no translucent glass). Soft hairline + light shadow. */
 export function glassSurface(theme, radius = 16) {
   return {
-    backgroundColor: 'transparent',
+    backgroundColor: theme.card || theme.glassFill || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF'),
     borderRadius: radius,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.glassHighlight,
+    borderColor: theme.separator || theme.glassHighlight,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 22,
-    shadowOpacity: theme.glassShadowOpacity,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.06,
+    elevation: 1,
+    overflow: 'hidden',
   };
 }
 
-/** Ambient backdrop: soft blurred blue/violet orbs (box-generated, ZAO orb palette). */
+/** Solid canvas — no orb gradient (gradients were read as glass/translucent). */
 export function AmbientBackground({ theme }) {
   return (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.ambientBase }]}>
-      <Image source={theme.mode === 'dark' ? AMBIENT_DARK : AMBIENT_LIGHT} resizeMode="cover" style={StyleSheet.absoluteFill} />
-    </View>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.ambientBase || theme.background }]} />
   );
 }
 

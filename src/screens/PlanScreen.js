@@ -1,31 +1,33 @@
 /**
- * ZAO - Plan tab. No planId -> Plans home (PlanHome.js, auto-opening a
- * running plan once). With a planId -> plan detail:
- *   hero (goal, animated progress ring, pulsing status badge, elapsed,
- *   step/milestone counts, Stop) that collapses into the frosted bar;
- *   interactive milestone timeline (tap filters steps); vertical step
- *   timeline (area tiles from src/ui/icons.js, risk chips, collapsible
- *   sub-tasks, error expansion, real durations, live shimmer); browser
- *   step thumbnail from App's live frame; StepDetailSheet; a state-aware
- *   glass dock (Start / Allow-Deny / Checkpoint / live status); and a
- *   completion moment. Live: refreshActivePlan polls every 1.5 s while
- *   the plan is non-terminal and this screen is open (the store itself
- *   only refreshes after actions). There is no user pause in planStore,
- *   so no Pause control is offered.
+ * ZAO - Plan tab. No planId -> Plans home. With planId -> Muse plan detail:
+ * solid white/near-black sheet, status pill, ~20/600 title, activity line,
+ * time, MAIN mono milestone sections, dashed timeline with outlined
+ * check/X/spinner, gray step titles, overflow … for Cancel/Delete.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Image, Easing } from 'react-native';
+import {
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
+  Animated, Image, Alert, Modal, Platform, ActionSheetIOS,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FrostedBar, CircleButton, GlassFill, glassSurface, haptic, AllowButton, DenyButton } from '../ui/ios';
+import { CircleButton, haptic, AllowButton, DenyButton } from '../ui/ios';
 import { AppIconTile, iconFor } from '../ui/icons';
 import { usePlanStore } from '../store/planStore';
 import { useTheme } from '../theme/useTheme';
 import { LiveLight, useReduceMotion, FadeSwapText } from '../components/browserFx';
-import { ArcRing, StatusGlyph, statusColor, RowShimmer, Capsule, PLAN_STATUS_LABEL } from '../components/planFx';
-import { TERMINAL, stepProgress, stepDuration, planElapsed, formatDuration, milestoneStates, stepTree, dockState, completionSummary, pickAutoOpen } from '../services/planning/planView';
+import { StatusGlyph, statusColor, PLAN_STATUS_LABEL } from '../components/planFx';
+import {
+  TERMINAL, stepDuration, planElapsed, formatDuration,
+  milestoneStates, stepTree, dockState, completionSummary, pickAutoOpen,
+  displayGoal, isPlanStalled,
+} from '../services/planning/planView';
 import StepDetailSheet from './StepDetailSheet';
 import PlanHome from './PlanHome';
+
+const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
+const STEP_TITLE = '#5a5a5a';
+const STEP_TITLE_DARK = '#A1A1A6';
 
 export default function PlanScreen(props) {
   const theme = useTheme();
@@ -44,16 +46,43 @@ export default function PlanScreen(props) {
   return <PlanDetail {...props} theme={theme} />;
 }
 
+function statusPillSpec(plan, theme, now, label) {
+  const stalled = isPlanStalled(plan, now);
+  if (stalled) return { label: 'Stalled', bg: theme.mode === 'dark' ? '#FF9F0A' : '#FF9500', fg: '#fff' };
+  if (plan.status === 'completed') return { label: 'Done', bg: theme.mode === 'dark' ? '#30D158' : '#34C759', fg: '#fff' };
+  if (plan.status === 'failed') return { label: 'Failed', bg: theme.mode === 'dark' ? '#FF453A' : '#FF3B30', fg: '#fff' };
+  if (plan.status === 'cancelled') return { label: 'Cancelled', bg: theme.textTertiary, fg: '#fff' };
+  if (['running', 'planning', 'recovering', 'awaiting_approval', 'paused'].includes(plan.status)) {
+    return {
+      label: label === 'Needs your approval' ? 'Needs you' : label === 'Checkpoint' ? 'Checkpoint' : label === 'Ready to start' ? 'Ready' : 'In progress',
+      bg: theme.mode === 'dark' ? '#FFFFFF' : '#000000',
+      fg: theme.mode === 'dark' ? '#000000' : '#FFFFFF',
+    };
+  }
+  return { label: PLAN_STATUS_LABEL[plan.status] || plan.status, bg: theme.textTertiary, fg: '#fff' };
+}
+
+function formatClock(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+  } catch (_) {
+    return '';
+  }
+}
+
 function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejectStep, onCancelPlan, onAcceptCheckpoint, onDismissCheckpoint, onStartPlan, onOpenBrowser, browserFrame }) {
   const insets = useSafeAreaInsets();
   const rm = useReduceMotion();
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const { activePlan, isLoading, loadPlan, refreshActivePlan } = usePlanStore();
+  const scrollRef = useRef(null);
+  const stepY = useRef({});
+  const { activePlan, isLoading, loadPlan, refreshActivePlan, removePlan } = usePlanStore();
   const [detailStep, setDetailStep] = useState(null);
-  const [msFilter, setMsFilter] = useState(null);
-  const [expanded, setExpanded] = useState({});
+  const [showEarlier, setShowEarlier] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [celebrate, setCelebrate] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const prevDone = useRef(new Set());
   const prevStatus = useRef(null);
 
   useEffect(() => { if (planId) loadPlan(planId); }, [planId, loadPlan]);
@@ -73,8 +102,39 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
     }
     prevStatus.current = plan.status;
   }, [plan?.status]);
-  // keep the open sheet in sync with live data
+
   const sheetStep = detailStep && plan ? (plan.steps || []).find((s) => s.id === detailStep.id) || detailStep : detailStep;
+
+  // Track newly completed steps for check-in animation
+  const newlyDone = useMemo(() => {
+    const set = new Set();
+    if (!plan) return set;
+    for (const s of plan.steps || []) {
+      if ((s.status === 'done' || s.status === 'completed') && !prevDone.current.has(s.id)) set.add(s.id);
+    }
+    return set;
+  }, [plan?.steps, plan?.updated_at]);
+  useEffect(() => {
+    if (!plan) return;
+    const next = new Set(prevDone.current);
+    for (const s of plan.steps || []) {
+      if (s.status === 'done' || s.status === 'completed') next.add(s.id);
+    }
+    prevDone.current = next;
+  }, [plan?.steps, plan?.updated_at]);
+
+  // Auto-scroll to current running step
+  useEffect(() => {
+    if (!plan || rm) return;
+    const running = (plan.steps || []).find((s) => s.status === 'running' || s.status === 'recovering');
+    if (!running) return;
+    const y = stepY.current[running.id];
+    if (y == null || !scrollRef.current) return;
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo?.({ y: Math.max(0, y - 120), animated: true });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [plan?.steps?.map((s) => `${s.id}:${s.status}`).join('|'), rm]);
 
   if (!plan) {
     return (
@@ -82,8 +142,10 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
         {isLoading ? <ActivityIndicator size="large" color={theme.textSecondary} /> : (
           <>
             <Ionicons name="document-text-outline" size={40} color={theme.textTertiary} />
-            <Text style={[styles.missing, { color: theme.textSecondary }]}>This plan isn’t on this phone anymore.</Text>
-            <TouchableOpacity onPress={() => onOpenPlan?.(null)} style={{ marginTop: 14 }}><Text style={{ color: theme.brandStrong, fontSize: 17 }}>All plans</Text></TouchableOpacity>
+            <Text style={[styles.missing, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.2}>This plan isn’t on this phone anymore.</Text>
+            <TouchableOpacity onPress={() => onOpenPlan?.(null)} style={{ marginTop: 14 }}>
+              <Text style={{ color: theme.brandStrong, fontSize: 16 }} maxFontSizeMultiplier={1.2}>All plans</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -91,179 +153,216 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
   }
 
   const steps = plan.steps || [];
-  const prog = stepProgress(steps);
   const ms = milestoneStates(plan.milestones || [], steps);
-  const tree = stepTree(steps, msFilter);
   const dock = dockState(plan);
-  const sc = statusColor(theme, dock.kind === 'approval' ? 'awaiting_approval' : plan.status);
   const elapsed = planElapsed(plan, now);
   const label = dock.kind === 'approval' ? 'Needs your approval' : dock.kind === 'checkpoint' ? 'Checkpoint' : dock.kind === 'start' ? 'Ready to start' : PLAN_STATUS_LABEL[plan.status] || plan.status;
-  const barTitleOpacity = scrollY.interpolate({ inputRange: [90, 150], outputRange: [0, 1], extrapolate: 'clamp' });
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 130], outputRange: [1, 0.2], extrapolate: 'clamp' });
-  const heroScale = scrollY.interpolate({ inputRange: [-80, 0, 140], outputRange: [1.04, 1, 0.94], extrapolate: 'clamp' });
-  const track = theme.mode === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(60,60,67,0.1)';
-  const stop = () => { haptic.warning(); onCancelPlan?.(plan.id); };
+  const pill = statusPillSpec(plan, theme, now, label);
+  const goal = displayGoal(plan);
+  const activity = (() => {
+    if (isPlanStalled(plan, now)) return 'No progress for over 30 minutes';
+    if (dock.kind === 'approval' && dock.step) return dock.step.description;
+    if (dock.kind === 'checkpoint') return plan.checkpoint_reason || 'Checkpoint suggested';
+    if (dock.step) return dock.step.description;
+    const running = steps.find((s) => s.status === 'running' || s.status === 'recovering');
+    if (running) return running.description;
+    if (plan.status === 'planning') return 'Planning the next steps…';
+    if (plan.status === 'completed') return 'All steps finished';
+    if (plan.status === 'failed') return 'Stopped with an error';
+    return label;
+  })();
+  const clock = formatClock(plan.updated_at || plan.created_at) || (elapsed != null ? formatDuration(elapsed) : '');
+  const sheetBg = theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF');
+  const stepTitleColor = theme.mode === 'dark' ? STEP_TITLE_DARK : STEP_TITLE;
+
+  const sections = useMemo(() => {
+    if (ms.length) {
+      return ms.map((m) => ({
+        key: m.id,
+        title: (m.title || m.name || 'MAIN').toUpperCase(),
+        nodes: stepTree(steps, m.id),
+      })).filter((s) => s.nodes.length || true);
+    }
+    return [{ key: 'main', title: 'MAIN', nodes: stepTree(steps, null) }];
+  }, [ms, steps]);
+
+  const EARLIER_COUNT = 2;
+  const flatDone = steps.filter((s) => s.status === 'done' || s.status === 'skipped');
+  const hideEarlier = !showEarlier && flatDone.length > EARLIER_COUNT && sections.length === 1;
+
+  const openOverflow = () => {
+    haptic.light();
+    const canCancel = live;
+    if (Platform.OS === 'ios') {
+      const opts = [];
+      if (canCancel) opts.push('Stop plan');
+      opts.push('Delete plan', 'Cancel');
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: opts, destructiveButtonIndex: canCancel ? 1 : 0, cancelButtonIndex: opts.length - 1 },
+        (i) => {
+          if (canCancel && i === 0) { haptic.warning(); onCancelPlan?.(plan.id); }
+          else if ((canCancel && i === 1) || (!canCancel && i === 0)) confirmDelete();
+        },
+      );
+    } else {
+      setMenuOpen(true);
+    }
+  };
+  const confirmDelete = () => {
+    haptic.warning();
+    Alert.alert('Delete plan?', `"${goal}" and all of its steps will be removed from this phone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { haptic.medium(); await removePlan?.(plan.id); onOpenPlan?.(null); } },
+    ]);
+  };
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
-      <Animated.ScrollView
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-        scrollEventThrottle={16} contentContainerStyle={{ paddingTop: 64, paddingBottom: 140 + insets.bottom, paddingHorizontal: 16 }}>
-        <Animated.View style={[styles.hero, glassSurface(theme, 28), { opacity: heroOpacity, transform: [{ scale: heroScale }] }]}>
-          <GlassFill theme={theme} radius={28} strong />
-          <View style={styles.heroTop}>
-            <ArcRing fraction={prog.fraction} size={96} stroke={8} color={sc} track={track}>
-              {plan.status === 'completed' ? <Ionicons name="checkmark" size={40} color={sc} /> : (
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={[styles.ringPct, { color: theme.textPrimary }]}>{Math.round(prog.fraction * 100)}%</Text>
-                  <Text style={[styles.ringSub, { color: theme.textTertiary }]}>{prog.done}/{prog.total}</Text>
-                </View>
-              )}
-            </ArcRing>
-            <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
-              <View style={[styles.badge, { backgroundColor: `${sc}1F`, borderColor: `${sc}55` }]}>
-                <LiveLight color={sc} pulse={live && plan.status !== 'paused' && !rm} size={7} />
-                <Text style={[styles.badgeText, { color: sc }]}>{label}</Text>
-              </View>
-              <View style={styles.stat}><Ionicons name="timer-outline" size={15} color={theme.textSecondary} /><Text style={[styles.statText, { color: theme.textSecondary }]}>{elapsed != null ? formatDuration(elapsed) : '—'}</Text></View>
-              <View style={styles.stat}><Ionicons name="list-outline" size={15} color={theme.textSecondary} /><Text style={[styles.statText, { color: theme.textSecondary }]}>{prog.total} steps{ms.length ? ` · ${ms.filter((m) => m.state === 'done').length}/${ms.length} milestones` : ''}</Text></View>
-            </View>
+      <View style={[styles.sheet, { backgroundColor: sheetBg, paddingTop: insets.top + 8 }]}>
+        <View style={styles.closeRow}>
+          <CircleButton theme={theme} icon="close" size={36} iconSize={18} label="Close plan" onPress={() => onOpenPlan?.(null)} />
+        </View>
+
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 140 + insets.bottom }}
+          scrollEventThrottle={16}
+        >
+          <View style={[styles.pill, { backgroundColor: pill.bg }]}>
+            {live && !isPlanStalled(plan, now) ? <LiveLight color={pill.fg} pulse={!rm} size={5} /> : null}
+            <Text style={[styles.pillText, { color: pill.fg }]} maxFontSizeMultiplier={1.2}>{pill.label}</Text>
           </View>
-          <Text style={[styles.goal, { color: theme.textPrimary }]}>{plan.goal}</Text>
-          {live ? (
-            <TouchableOpacity onPress={stop} style={[styles.stop, { backgroundColor: theme.deny }]} accessibilityRole="button" accessibilityLabel="Stop plan">
-              <Ionicons name="stop-circle-outline" size={17} color={statusColor(theme, 'failed')} /><Text style={[styles.stopText, { color: statusColor(theme, 'failed') }]}>Stop</Text>
+          <Text style={[styles.title, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.2}>{goal}</Text>
+          <Text style={[styles.activity, { color: theme.textPrimary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{activity}</Text>
+          <Text style={[styles.time, { color: theme.textTertiary }]} maxFontSizeMultiplier={1.2}>{clock}</Text>
+          <View style={[styles.divider, { backgroundColor: theme.separator }]} />
+
+          {hideEarlier ? (
+            <TouchableOpacity onPress={() => { haptic.select(); setShowEarlier(true); }} style={styles.showEarlier} accessibilityRole="button">
+              <Text style={[styles.showEarlierText, { color: theme.brandStrong || '#007AFF' }]} maxFontSizeMultiplier={1.2}>Show earlier steps</Text>
             </TouchableOpacity>
           ) : null}
-        </Animated.View>
 
-        {ms.length ? (
-          <View style={{ marginTop: 22 }}>
-            <SectionTitle theme={theme} title="Milestones" right={msFilter ? 'Show all' : null} onRight={() => { haptic.select(); setMsFilter(null); }} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4, gap: 0 }}>
-              {ms.map((m, i) => {
-                const on = msFilter === m.id;
-                const c = m.state === 'done' ? statusColor(theme, 'done') : m.state === 'current' ? statusColor(theme, 'running') : m.state === 'missed' ? statusColor(theme, 'failed') : theme.textTertiary;
-                return (
-                  <View key={m.id} style={styles.msItem}>
-                    {i > 0 ? <View style={[styles.msLine, { backgroundColor: ms[i - 1].state === 'done' ? statusColor(theme, 'done') : theme.separator }]} /> : null}
-                    <TouchableOpacity onPress={() => { haptic.select(); setMsFilter(on ? null : m.id); }} accessibilityRole="button" accessibilityState={{ selected: on }}
-                      style={[styles.msCard, glassSurface(theme, 18), on && { borderColor: c, borderWidth: 1.5 }]}>
-                      <GlassFill theme={theme} radius={18} />
-                      <View style={styles.msHead}>
-                        {m.state === 'done' ? <Ionicons name="checkmark-circle" size={20} color={c} /> : m.state === 'missed' ? <StatusGlyph status="missed" theme={theme} size={20} />
-                          : m.state === 'current' ? <ArcRing fraction={m.stepCount ? m.doneCount / m.stepCount : 0} size={20} stroke={3} color={c} track={track} /> : <Ionicons name="flag-outline" size={18} color={c} />}
-                        <Text style={[styles.msCount, { color: theme.textTertiary }]}>{m.doneCount}/{m.stepCount}</Text>
-                      </View>
-                      <Text style={[styles.msTitle, { color: m.state === 'future' ? theme.textSecondary : theme.textPrimary }]} numberOfLines={2}>{m.title || m.name}</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : null}
+          {sections.map((sec) => {
+            let nodes = sec.nodes;
+            if (hideEarlier && sec.key === 'main') {
+              const skip = Math.max(0, flatDone.length - EARLIER_COUNT);
+              let seen = 0;
+              nodes = nodes.filter((n) => {
+                if (n.step.status === 'done' || n.step.status === 'skipped') {
+                  seen += 1;
+                  return seen > skip;
+                }
+                return true;
+              });
+            }
+            if (!nodes.length) return null;
+            return (
+              <View key={sec.key} style={{ marginTop: 8 }}>
+                <Text style={[styles.monoSection, { color: theme.textSecondary }]} maxFontSizeMultiplier={1.2}>{sec.title}</Text>
+                {nodes.map((node, i) => (
+                  <MuseStep
+                    key={node.step.id}
+                    node={node}
+                    last={i === nodes.length - 1}
+                    theme={theme}
+                    now={now}
+                    titleColor={stepTitleColor}
+                    animateIn={newlyDone.has(node.step.id)}
+                    onLayout={(y) => { stepY.current[node.step.id] = y; }}
+                    onPress={(s) => { haptic.light(); setDetailStep(s); }}
+                    browserFrame={browserFrame}
+                    onOpenBrowser={onOpenBrowser}
+                  />
+                ))}
+              </View>
+            );
+          })}
+          {steps.length === 0 ? <Text style={{ color: theme.textTertiary, textAlign: 'center', marginTop: 20 }} maxFontSizeMultiplier={1.2}>No steps yet.</Text> : null}
+        </ScrollView>
 
-        <View style={{ marginTop: 22 }}>
-          <SectionTitle theme={theme} title={msFilter ? `Steps · ${(ms.find((m) => m.id === msFilter) || {}).title || 'Milestone'}` : 'Steps'} />
-          {tree.map((node, i) => (
-            <StepNode key={node.step.id} node={node} last={i === tree.length - 1} theme={theme} now={now} track={track}
-              open={!!expanded[node.step.id]} onToggle={() => { haptic.select(); setExpanded((e) => ({ ...e, [node.step.id]: !e[node.step.id] })); }}
-              onPress={(s) => { haptic.light(); setDetailStep(s); }} browserFrame={browserFrame} onOpenBrowser={onOpenBrowser} />
-          ))}
-          {tree.length === 0 ? <Text style={{ color: theme.textTertiary, textAlign: 'center', marginTop: 20 }}>No steps yet.</Text> : null}
+        <View style={[styles.topChrome, { top: insets.top + 8 }]}>
+          <CircleButton theme={theme} icon="chevron-back" size={36} iconSize={18} label="All plans" onPress={() => onOpenPlan?.(null)} />
+          <View style={{ flex: 1 }} />
+          <CircleButton theme={theme} icon="ellipsis-horizontal" size={36} iconSize={18} label="Plan options" onPress={openOverflow} />
         </View>
-      </Animated.ScrollView>
-
-      <FrostedBar theme={theme} style={[styles.bar, { borderBottomColor: theme.separator }]}>
-        <CircleButton theme={theme} icon="chevron-back" label="All plans" onPress={() => onOpenPlan?.(null)} />
-        <Animated.View style={[styles.barCenter, { opacity: barTitleOpacity }]}>
-          <Text style={[styles.barTitle, { color: theme.textPrimary }]} numberOfLines={1}>{plan.goal}</Text>
-          <Text style={[styles.barSub, { color: sc }]}>{prog.done}/{prog.total} · {label}</Text>
-        </Animated.View>
-        <CircleButton theme={theme} icon="chatbubble-outline" label="Back to chat" onPress={onClose} iconSize={20} />
-      </FrostedBar>
+      </View>
 
       <Dock theme={theme} dock={dock} plan={plan} insets={insets} onStartPlan={onStartPlan} onCancelPlan={onCancelPlan}
         onApproveStep={onApproveStep} onRejectStep={onRejectStep} onAcceptCheckpoint={onAcceptCheckpoint} onDismissCheckpoint={onDismissCheckpoint} />
 
       {celebrate ? <Completion theme={theme} plan={plan} onDone={() => setCelebrate(false)} /> : null}
       <StepDetailSheet step={sheetStep} visible={!!sheetStep} onClose={() => setDetailStep(null)} theme={theme} />
+
+      {menuOpen ? (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setMenuOpen(false)}>
+          <TouchableOpacity style={styles.menuScrim} activeOpacity={1} onPress={() => setMenuOpen(false)} />
+          <View style={[styles.menuSheet, { backgroundColor: sheetBg, paddingBottom: insets.bottom + 12 }]}>
+            {live ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); haptic.warning(); onCancelPlan?.(plan.id); }}>
+                <Text style={[styles.menuText, { color: theme.mode === 'dark' ? '#FF9F0A' : '#FF9500' }]}>Stop plan</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); confirmDelete(); }}>
+              <Text style={[styles.menuText, { color: theme.mode === 'dark' ? '#FF453A' : '#FF3B30' }]}>Delete plan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
+              <Text style={[styles.menuText, { color: theme.textPrimary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
 
-function SectionTitle({ theme, title, right, onRight }) {
-  return (
-    <View style={styles.sectionRow}>
-      <Text style={[styles.section, { color: theme.textSecondary }]}>{title.toUpperCase()}</Text>
-      {right ? <TouchableOpacity onPress={onRight}><Text style={{ color: theme.brandStrong, fontSize: 15 }}>{right}</Text></TouchableOpacity> : null}
-    </View>
-  );
-}
-
-function StepNode({ node, last, theme, now, track, open, onToggle, onPress, browserFrame, onOpenBrowser }) {
+function MuseStep({ node, last, theme, now, titleColor, animateIn, onLayout, onPress, browserFrame, onOpenBrowser }) {
   const { step, children } = node;
   const running = step.status === 'running' || step.status === 'recovering';
   const failed = step.status === 'failed';
   const dur = stepDuration(step, now);
-  const lineColor = step.status === 'done' ? statusColor(theme, 'done') : theme.separator;
+  const desc = step.reasoning || step.action || step.target || (failed && step.error_message) || iconFor(step.domain).label;
   return (
-    <View style={styles.stepRow}>
+    <View
+      style={styles.stepRow}
+      onLayout={(e) => onLayout?.(e.nativeEvent.layout.y)}
+    >
       <View style={styles.rail}>
-        <View style={styles.railDot}><StatusGlyph status={step.status} theme={theme} size={24} /></View>
-        {!last ? <View style={[styles.railLine, { backgroundColor: lineColor }]} /> : null}
-      </View>
-      <View style={{ flex: 1, minWidth: 0, paddingBottom: 12 }}>
-        <TouchableOpacity activeOpacity={0.85} onPress={() => onPress(step)} accessibilityRole="button"
-          style={[styles.stepCard, glassSurface(theme, 18), running && { borderColor: `${statusColor(theme, 'running')}66` }, failed && { borderColor: `${statusColor(theme, 'failed')}66` }]}>
-          <GlassFill theme={theme} radius={18} />
-          {running ? <RowShimmer color={statusColor(theme, 'running')} radius={18} /> : null}
-          <View style={styles.stepTop}>
-            <AppIconTile k={step.domain} size={30} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.stepTitle, { color: step.status === 'pending' || step.status === 'blocked' ? theme.textSecondary : theme.textPrimary }]} numberOfLines={3}>{step.description}</Text>
-              <View style={styles.stepMeta}>
-                <Text style={[styles.stepMetaText, { color: theme.textTertiary }]}>{iconFor(step.domain).label}</Text>
-                {dur != null ? <Text style={[styles.stepMetaText, { color: theme.textTertiary }]}>· {formatDuration(dur)}</Text> : null}
-                {step.retry_count > 0 ? <Text style={[styles.stepMetaText, { color: theme.textTertiary }]}>· retried {step.retry_count}×</Text> : null}
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} />
+        <StatusGlyph status={step.status} theme={theme} size={22} animateIn={animateIn} />
+        {!last ? (
+          <View style={styles.dashWrap}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <View key={i} style={[styles.dash, { backgroundColor: theme.separator }]} />
+            ))}
           </View>
-          {step.is_risky || step.status === 'awaiting_approval' ? (
-            <View style={styles.chips}>
-              <Capsule theme={theme} icon="shield-half" label={step.status === 'awaiting_approval' ? 'Needs approval' : 'Risky'} color={statusColor(theme, 'awaiting_approval')} />
-              {step.status === 'blocked' ? <Capsule theme={theme} icon="lock-closed" label="Blocked" color={theme.textTertiary} /> : null}
-            </View>
-          ) : null}
-          {failed && step.error_message ? (
-            <TouchableOpacity onPress={onToggle} style={[styles.err, { backgroundColor: `${statusColor(theme, 'failed')}14` }]}>
-              <Ionicons name="alert-circle" size={15} color={statusColor(theme, 'failed')} />
-              <Text style={[styles.errText, { color: statusColor(theme, 'failed') }]} numberOfLines={open ? undefined : 2}>{step.error_message}</Text>
-            </TouchableOpacity>
-          ) : null}
+        ) : null}
+      </View>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => onPress(step)}
+        accessibilityRole="button"
+        style={styles.stepBody}
+      >
+        <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+          <Text style={[styles.stepTitle, { color: titleColor }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
+            {step.description}
+          </Text>
+          <Text style={[styles.stepDesc, { color: theme.textTertiary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>
+            {desc}{dur != null ? ` · ${formatDuration(dur)}` : ''}
+          </Text>
           {step.domain === 'browser' && running && browserFrame ? (
             <TouchableOpacity onPress={onOpenBrowser} style={styles.thumbWrap} accessibilityLabel="Open live browser">
               <Image source={{ uri: `data:image/jpeg;base64,${browserFrame}` }} style={styles.thumb} resizeMode="cover" />
-              <View style={styles.thumbBadge}><LiveLight color="#FF3B30" pulse size={6} /><Text style={styles.thumbText}>LIVE · Open browser</Text></View>
             </TouchableOpacity>
           ) : null}
           {children.length ? (
-            <TouchableOpacity onPress={onToggle} style={styles.subToggle} accessibilityRole="button">
-              <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color={theme.textSecondary} />
-              <Text style={[styles.subToggleText, { color: theme.textSecondary }]}>{children.filter((c) => c.status === 'done').length}/{children.length} sub-tasks</Text>
-            </TouchableOpacity>
+            <Text style={[styles.subHint, { color: theme.textTertiary }]} maxFontSizeMultiplier={1.2}>
+              {children.filter((c) => c.status === 'done').length}/{children.length} sub-tasks
+            </Text>
           ) : null}
-        </TouchableOpacity>
-        {open && children.length ? children.map((c) => (
-          <TouchableOpacity key={c.id} onPress={() => onPress(c)} style={[styles.sub, { borderLeftColor: theme.separator }]}>
-            <StatusGlyph status={c.status} theme={theme} size={18} />
-            <AppIconTile k={c.domain} size={22} />
-            <Text style={[styles.subText, { color: theme.textPrimary }]} numberOfLines={2}>{c.description}</Text>
-          </TouchableOpacity>
-        )) : null}
-      </View>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} style={{ marginTop: 2 }} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -271,6 +370,7 @@ function StepNode({ node, last, theme, now, track, open, onToggle, onPress, brow
 function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveStep, onRejectStep, onAcceptCheckpoint, onDismissCheckpoint }) {
   if (dock.kind === 'none' || dock.kind === 'terminal') return null;
   const cpId = plan.checkpoint_plan_id || plan.id;
+  const sheetBg = theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF');
   let body = null;
   if (dock.kind === 'start') {
     body = (<>
@@ -286,9 +386,9 @@ function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveS
       <View style={styles.dockInfo}>
         <AppIconTile k={s.domain} size={36} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.hRow}><Ionicons name="warning" size={14} color={statusColor(theme, 'awaiting_approval')} /><Text style={[styles.dockKicker, { color: statusColor(theme, 'awaiting_approval') }]}>NEEDS YOUR APPROVAL</Text></View>
-          <Text style={[styles.dockTitle, { color: theme.textPrimary }]} numberOfLines={2}>{s.description}</Text>
-          <Text style={[styles.dockText, { color: theme.textSecondary }]} numberOfLines={3}>{s.risk_reason || 'This step needs your approval before it runs.'}</Text>
+          <Text style={[styles.dockKicker, { color: statusColor(theme, 'awaiting_approval') }]} maxFontSizeMultiplier={1.2}>NEEDS YOUR APPROVAL</Text>
+          <Text style={[styles.dockTitle, { color: theme.textPrimary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{s.description}</Text>
+          <Text style={[styles.dockText, { color: theme.textSecondary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{s.risk_reason || 'This step needs your approval before it runs.'}</Text>
         </View>
       </View>
       <View style={styles.dockBtns}>
@@ -298,7 +398,7 @@ function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveS
     </>);
   } else if (dock.kind === 'checkpoint') {
     body = (<>
-      <DockInfo theme={theme} icon="flag" color={statusColor(theme, 'done')} title="Checkpoint suggested" text={plan.checkpoint_reason || 'A good amount has changed since the last checkpoint - worth verifying before continuing.'} />
+      <DockInfo theme={theme} icon="flag" color={statusColor(theme, 'done')} title="Checkpoint suggested" text={plan.checkpoint_reason || 'A good amount has changed since the last checkpoint — worth verifying before continuing.'} />
       <View style={styles.dockBtns}>
         <DenyButton theme={theme} label="Continue" style={styles.flex} onPress={() => { haptic.light(); onDismissCheckpoint?.(cpId); }} />
         <AllowButton label="Mark checkpoint" icon="flag" style={styles.flex} onPress={() => { haptic.success(); onAcceptCheckpoint?.(cpId); }} />
@@ -310,7 +410,7 @@ function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveS
       <View style={styles.dockInfo}>
         {s ? <AppIconTile k={s.domain} size={32} /> : <ActivityIndicator color={statusColor(theme, 'running')} />}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.hRow}><LiveLight color={statusColor(theme, 'running')} pulse size={7} /><Text style={[styles.dockKicker, { color: statusColor(theme, 'running') }]}>{plan.status === 'recovering' ? 'RECOVERING' : plan.status === 'planning' ? 'PLANNING' : 'WORKING'}</Text></View>
+          <View style={styles.hRow}><LiveLight color={statusColor(theme, 'running')} pulse size={7} /><Text style={[styles.dockKicker, { color: statusColor(theme, 'running') }]} maxFontSizeMultiplier={1.2}>{plan.status === 'recovering' ? 'RECOVERING' : plan.status === 'planning' ? 'PLANNING' : 'WORKING'}</Text></View>
           <FadeSwapText text={s ? s.description : 'Preparing the next step…'} style={[styles.dockTitle, { color: theme.textPrimary }]} />
         </View>
       </View>
@@ -318,7 +418,7 @@ function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveS
   }
   return (
     <View style={[styles.dock, { bottom: Math.max(insets.bottom, 10) + 6 }]}>
-      <View style={[styles.dockGlass, glassSurface(theme, 26)]}><GlassFill theme={theme} radius={26} strong />{body}</View>
+      <View style={[styles.dockCard, { backgroundColor: sheetBg, borderColor: theme.separator }]}>{body}</View>
     </View>
   );
 }
@@ -328,8 +428,8 @@ function DockInfo({ theme, icon, color, title, text }) {
     <View style={styles.dockInfo}>
       <View style={[styles.dockIcon, { backgroundColor: `${color}1F` }]}><Ionicons name={icon} size={22} color={color} /></View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.dockTitle, { color: theme.textPrimary }]}>{title}</Text>
-        <Text style={[styles.dockText, { color: theme.textSecondary }]} numberOfLines={3}>{text}</Text>
+        <Text style={[styles.dockTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.2}>{title}</Text>
+        <Text style={[styles.dockText, { color: theme.textSecondary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{text}</Text>
       </View>
     </View>
   );
@@ -341,87 +441,74 @@ function Completion({ theme, plan, onDone }) {
   const sum = completionSummary(plan);
   useEffect(() => { if (!rm) Animated.spring(s, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true }).start(); }, [rm, s]);
   const ok = statusColor(theme, 'done');
+  const sheetBg = theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF');
   return (
     <View style={styles.celebrate}>
       <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={onDone} />
-      <Animated.View style={[styles.celebCard, glassSurface(theme, 30), { opacity: s, transform: [{ scale: s.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
-        <GlassFill theme={theme} radius={30} strong />
-        <Animated.View style={[styles.celebRing, { backgroundColor: `${ok}22`, transform: [{ scale: s }] }]}><Ionicons name="checkmark-circle" size={72} color={ok} /></Animated.View>
-        <Text style={[styles.celebTitle, { color: theme.textPrimary }]}>Plan complete</Text>
-        <Text style={[styles.celebGoal, { color: theme.textSecondary }]} numberOfLines={3}>{plan.goal}</Text>
+      <Animated.View style={[styles.celebCard, { backgroundColor: sheetBg, opacity: s, transform: [{ scale: s.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
+        <Animated.View style={[styles.celebRing, { backgroundColor: `${ok}22`, transform: [{ scale: s }] }]}><Ionicons name="checkmark-circle-outline" size={72} color={ok} /></Animated.View>
+        <Text style={[styles.celebTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.2}>Plan complete</Text>
+        <Text style={[styles.celebGoal, { color: theme.textSecondary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{displayGoal(plan)}</Text>
         <View style={styles.celebStats}>
           <Stat theme={theme} v={`${sum.done}/${sum.total}`} k="Steps done" />
           <Stat theme={theme} v={String(sum.calls)} k="Tool calls" />
           <Stat theme={theme} v={sum.elapsed || '—'} k="Elapsed" />
         </View>
-        {sum.skipped ? <Text style={[styles.dockText, { color: theme.textTertiary, textAlign: 'center' }]}>{sum.skipped} skipped</Text> : null}
         <AllowButton label="Done" style={{ alignSelf: 'stretch', marginTop: 8 }} onPress={() => { haptic.light(); onDone(); }} />
       </Animated.View>
     </View>
   );
 }
-const Stat = ({ theme, v, k }) => (<View style={{ flex: 1, alignItems: 'center' }}><Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }}>{v}</Text><Text style={{ color: theme.textTertiary, fontSize: 12 }}>{k}</Text></View>);
+const Stat = ({ theme, v, k }) => (
+  <View style={{ flex: 1, alignItems: 'center' }}>
+    <Text style={{ color: theme.textPrimary, fontSize: 20, fontWeight: '700' }} maxFontSizeMultiplier={1.2}>{v}</Text>
+    <Text style={{ color: theme.textTertiary, fontSize: 12 }} maxFontSizeMultiplier={1.2}>{k}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   missing: { fontSize: 15, marginTop: 10, textAlign: 'center' },
-  bar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, minHeight: 56, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
-  barCenter: { flex: 1, alignItems: 'center' },
-  barTitle: { fontSize: 17, fontWeight: '600', letterSpacing: -0.41 },
-  barSub: { fontSize: 12, fontWeight: '500' },
-  hero: { padding: 18, marginTop: 8, gap: 14 },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  ringPct: { fontSize: 22, fontWeight: '700', letterSpacing: -0.5 },
-  ringSub: { fontSize: 12, fontWeight: '600' },
-  badge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 10, paddingLeft: 4, height: 26, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth },
-  badgeText: { fontSize: 13, fontWeight: '600' },
-  stat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  statText: { fontSize: 13, letterSpacing: -0.08 },
-  goal: { fontSize: 26, fontWeight: '700', letterSpacing: 0.3, lineHeight: 31 },
-  stop: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 14, borderRadius: 17 },
-  stopText: { fontSize: 15, fontWeight: '600' },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginHorizontal: 4 },
-  section: { fontSize: 13, fontWeight: '600', letterSpacing: -0.08 },
-  msItem: { flexDirection: 'row', alignItems: 'center' },
-  msLine: { width: 14, height: 2, borderRadius: 1 },
-  msCard: { width: 140, padding: 12, gap: 8 },
-  msHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  msCount: { fontSize: 12, fontWeight: '600' },
-  msTitle: { fontSize: 14, fontWeight: '600', letterSpacing: -0.15, lineHeight: 18 },
-  stepRow: { flexDirection: 'row', gap: 10 },
-  rail: { width: 26, alignItems: 'center' },
-  railDot: { height: 50, justifyContent: 'center' },
-  railLine: { flex: 1, width: 2, borderRadius: 1, marginTop: -8, marginBottom: -12 },
-  stepCard: { padding: 12, gap: 10, overflow: 'hidden' },
-  stepTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  stepTitle: { fontSize: 16, fontWeight: '600', letterSpacing: -0.3, lineHeight: 21 },
-  stepMeta: { flexDirection: 'row', gap: 4, marginTop: 2 },
-  stepMetaText: { fontSize: 13 },
-  chips: { flexDirection: 'row', gap: 6, marginLeft: 42 },
-  err: { flexDirection: 'row', gap: 6, padding: 10, borderRadius: 12 },
-  errText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  thumbWrap: { borderRadius: 12, overflow: 'hidden', height: 110 },
+  sheet: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  closeRow: { height: 8 },
+  topChrome: { position: 'absolute', left: 12, right: 12, flexDirection: 'row', alignItems: 'center', zIndex: 5 },
+  pill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 12, marginTop: 44, marginBottom: 10 },
+  pillText: { fontSize: 12, fontWeight: '600', letterSpacing: 0.1 },
+  title: { fontSize: 20, fontWeight: '600', letterSpacing: 0.2, lineHeight: 26, marginBottom: 6 },
+  activity: { fontSize: 17, fontWeight: '400', letterSpacing: -0.41, lineHeight: 22, marginBottom: 4 },
+  time: { fontSize: 13, fontWeight: '400', letterSpacing: -0.08, marginBottom: 14 },
+  divider: { height: StyleSheet.hairlineWidth, width: '100%', marginBottom: 12 },
+  showEarlier: { paddingVertical: 6, marginBottom: 4 },
+  showEarlierText: { fontSize: 15, fontWeight: '400' },
+  monoSection: { fontSize: 15, fontWeight: '500', letterSpacing: 1.2, fontFamily: MONO, marginTop: 10, marginBottom: 12 },
+  stepRow: { flexDirection: 'row', gap: 12, minHeight: 72, marginBottom: 4 },
+  rail: { width: 22, alignItems: 'center' },
+  dashWrap: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 4 },
+  dash: { width: 1.5, height: 5, borderRadius: 1 },
+  stepBody: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', paddingBottom: 20 },
+  stepTitle: { fontSize: 15, fontWeight: '600', letterSpacing: -0.24, lineHeight: 20 },
+  stepDesc: { fontSize: 15, fontWeight: '400', letterSpacing: -0.24, lineHeight: 20, marginTop: 2 },
+  subHint: { fontSize: 13, marginTop: 6 },
+  thumbWrap: { borderRadius: 10, overflow: 'hidden', height: 88, marginTop: 8 },
   thumb: { width: '100%', height: '100%' },
-  thumbBadge: { position: 'absolute', left: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', paddingRight: 8, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.55)' },
-  thumbText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  subToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 42 },
-  subToggleText: { fontSize: 13, fontWeight: '500' },
-  sub: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 16, paddingLeft: 12, paddingVertical: 8, borderLeftWidth: 2 },
-  subText: { flex: 1, fontSize: 14 },
   dock: { position: 'absolute', left: 12, right: 12 },
-  dockGlass: { padding: 14, gap: 12 },
+  dockCard: { padding: 14, gap: 12, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
   dockInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dockIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   dockKicker: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
-  dockTitle: { fontSize: 16, fontWeight: '600', letterSpacing: -0.3, marginTop: 1 },
+  dockTitle: { fontSize: 15, fontWeight: '600', letterSpacing: -0.24, marginTop: 1 },
   dockText: { fontSize: 13, lineHeight: 18, marginTop: 2 },
   dockBtns: { flexDirection: 'row', gap: 10 },
   hRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  celebrate: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  celebCard: { alignSelf: 'stretch', padding: 22, alignItems: 'center', gap: 10 },
+  celebrate: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  celebCard: { alignSelf: 'stretch', padding: 22, alignItems: 'center', gap: 10, borderRadius: 28 },
   celebRing: { width: 110, height: 110, borderRadius: 55, alignItems: 'center', justifyContent: 'center' },
-  celebTitle: { fontSize: 24, fontWeight: '700' },
+  celebTitle: { fontSize: 22, fontWeight: '700' },
   celebGoal: { fontSize: 15, textAlign: 'center' },
   celebStats: { flexDirection: 'row', alignSelf: 'stretch', marginVertical: 8 },
+  menuScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  menuSheet: { position: 'absolute', left: 12, right: 12, bottom: 12, borderRadius: 16, overflow: 'hidden' },
+  menuItem: { paddingVertical: 16, paddingHorizontal: 18, alignItems: 'center' },
+  menuText: { fontSize: 17, fontWeight: '600' },
 });
