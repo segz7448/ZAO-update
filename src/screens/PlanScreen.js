@@ -219,8 +219,10 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
       <View style={[styles.sheet, { backgroundColor: sheetBg, paddingTop: insets.top + 8 }]}>
-        <View style={styles.closeRow}>
-          <CircleButton theme={theme} icon="close" size={36} iconSize={18} label="Close plan" onPress={() => onOpenPlan?.(null)} />
+        <View style={[styles.topChrome, { top: insets.top + 8 }]} pointerEvents="box-none">
+          <View style={{ flex: 1 }} />
+          <CircleButton theme={theme} icon="ellipsis-horizontal" size={44} iconSize={20} label="Plan options" onPress={openOverflow} />
+          <CircleButton theme={theme} icon="close" size={44} iconSize={20} label="Close plan" onPress={() => onOpenPlan?.(null)} style={{ marginLeft: 8 }} />
         </View>
 
         <ScrollView
@@ -232,8 +234,8 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
             {live && !isPlanStalled(plan, now) ? <LiveLight color={pill.fg} pulse={!rm} size={5} /> : null}
             <Text style={[styles.pillText, { color: pill.fg }]} maxFontSizeMultiplier={1.2}>{pill.label}</Text>
           </View>
-          <Text style={[styles.title, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.2}>{goal}</Text>
-          <Text style={[styles.activity, { color: theme.textPrimary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{activity}</Text>
+          <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{goal}</Text>
+          <Text style={[styles.activity, { color: theme.textPrimary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>{activity}</Text>
           <Text style={[styles.time, { color: theme.textTertiary }]} maxFontSizeMultiplier={1.2}>{clock}</Text>
           <View style={[styles.divider, { backgroundColor: theme.separator }]} />
 
@@ -281,11 +283,6 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
           {steps.length === 0 ? <Text style={{ color: theme.textTertiary, textAlign: 'center', marginTop: 20 }} maxFontSizeMultiplier={1.2}>No steps yet.</Text> : null}
         </ScrollView>
 
-        <View style={[styles.topChrome, { top: insets.top + 8 }]}>
-          <CircleButton theme={theme} icon="chevron-back" size={36} iconSize={18} label="All plans" onPress={() => onOpenPlan?.(null)} />
-          <View style={{ flex: 1 }} />
-          <CircleButton theme={theme} icon="ellipsis-horizontal" size={36} iconSize={18} label="Plan options" onPress={openOverflow} />
-        </View>
       </View>
 
       <Dock theme={theme} dock={dock} plan={plan} insets={insets} onStartPlan={onStartPlan} onCancelPlan={onCancelPlan}
@@ -343,8 +340,8 @@ function MuseStep({ node, last, theme, now, titleColor, animateIn, onLayout, onP
         accessibilityRole="button"
         style={styles.stepBody}
       >
-        <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-          <Text style={[styles.stepTitle, { color: titleColor }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
+        <View style={{ flex: 1, minWidth: 0, paddingRight: 12, flexShrink: 1 }}>
+          <Text style={[styles.stepTitle, { color: titleColor }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>
             {step.description}
           </Text>
           <Text style={[styles.stepDesc, { color: theme.textTertiary }]} numberOfLines={3} maxFontSizeMultiplier={1.2}>
@@ -471,12 +468,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   missing: { fontSize: 15, marginTop: 10, textAlign: 'center' },
   sheet: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
-  closeRow: { height: 8 },
-  topChrome: { position: 'absolute', left: 12, right: 12, flexDirection: 'row', alignItems: 'center', zIndex: 5 },
-  pill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 12, marginTop: 44, marginBottom: 10 },
+  topChrome: { position: 'absolute', left: 12, right: 12, flexDirection: 'row', alignItems: 'center', zIndex: 5, gap: 0 },
+  pill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 12, marginTop: 52, marginBottom: 10 },
   pillText: { fontSize: 12, fontWeight: '600', letterSpacing: 0.1 },
-  title: { fontSize: 20, fontWeight: '600', letterSpacing: 0.2, lineHeight: 26, marginBottom: 6 },
-  activity: { fontSize: 17, fontWeight: '400', letterSpacing: -0.41, lineHeight: 22, marginBottom: 4 },
+  title: { fontSize: 20, fontWeight: '600', letterSpacing: 0.2, lineHeight: 26, marginBottom: 6, paddingRight: 96 },
+  activity: { fontSize: 17, fontWeight: '400', letterSpacing: -0.41, lineHeight: 22, marginBottom: 4, paddingRight: 24 },
   time: { fontSize: 13, fontWeight: '400', letterSpacing: -0.08, marginBottom: 14 },
   divider: { height: StyleSheet.hairlineWidth, width: '100%', marginBottom: 12 },
   showEarlier: { paddingVertical: 6, marginBottom: 4 },
@@ -487,8 +483,8 @@ const styles = StyleSheet.create({
   dashWrap: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 4 },
   dash: { width: 1.5, height: 5, borderRadius: 1 },
   stepBody: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', paddingBottom: 20 },
-  stepTitle: { fontSize: 15, fontWeight: '600', letterSpacing: -0.24, lineHeight: 20 },
-  stepDesc: { fontSize: 15, fontWeight: '400', letterSpacing: -0.24, lineHeight: 20, marginTop: 2 },
+  stepTitle: { fontSize: 15, fontWeight: '600', letterSpacing: -0.24, lineHeight: 20, flexShrink: 1 },
+  stepDesc: { fontSize: 15, fontWeight: '400', letterSpacing: -0.24, lineHeight: 20, marginTop: 2, flexShrink: 1 },
   subHint: { fontSize: 13, marginTop: 6 },
   thumbWrap: { borderRadius: 10, overflow: 'hidden', height: 88, marginTop: 8 },
   thumb: { width: '100%', height: '100%' },

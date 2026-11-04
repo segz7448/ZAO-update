@@ -205,7 +205,7 @@ export const darkTheme = {
   brandStrong: '#2B88D3',
   deny: '#2D2D2D',
   denyText: '#FFFFFF',
-  chromeButton: '#1C1C1C',
+  chromeButton: '#2C2C2E',
   chromeIcon: '#FFFFFF',
   pill: '#2D2D2D',                // Grok Ask pill
   headerPill: '#1C1C1C',

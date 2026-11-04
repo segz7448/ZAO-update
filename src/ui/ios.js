@@ -94,18 +94,33 @@ export function IconTile({ name, color, size = 29 }) {
   );
 }
 
-/** Grok Bot 44pt white circular header button with soft shadow. */
+/** Muse/Grok 44pt soft circle — filled white (dark #2C2C2E), soft shadow, no outline. */
 export function CircleButton({ theme, icon, onPress, size = 44, label, iconSize = 22, style, children }) {
+  const fill = theme.chromeButton || (theme.mode === 'dark' ? '#2C2C2E' : '#FFFFFF');
   return (
     <TouchableOpacity
       onPress={() => { haptic.light(); onPress?.(); }}
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={6}
-      style={[styles.circle, glassSurface(theme, size / 2), { width: size, height: size }, style]}
+      style={[
+        styles.circle,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: fill,
+          borderWidth: 0,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowRadius: 8,
+          shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.12,
+          elevation: 3,
+        },
+        style,
+      ]}
     >
-      <GlassFill theme={theme} radius={size / 2} strong />
-      {children || <Ionicons name={icon} size={iconSize} color={theme.chromeIcon} />}
+      {children || <Ionicons name={outlineName(icon)} size={iconSize} color={theme.chromeIcon} />}
     </TouchableOpacity>
   );
 }

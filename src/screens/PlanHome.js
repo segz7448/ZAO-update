@@ -5,13 +5,12 @@
  * overflow menu.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FrostedBar, CircleButton, haptic } from '../ui/ios';
 import { usePlanStore } from '../store/planStore';
-import { LiveLight } from '../components/browserFx';
-import { statusColor, PLAN_STATUS_LABEL } from '../components/planFx';
-import { groupPlans, filterPlans, FILTERS, summaryStatus, summaryProgress, needsYou, formatAgo, TERMINAL, displayGoal, isPlanStalled, formatDuration } from '../services/planning/planView';
+import { StatusGlyph, PLAN_STATUS_LABEL } from '../components/planFx';
+import { groupPlans, filterPlans, FILTERS, summaryStatus, summaryProgress, needsYou, formatAgo, TERMINAL, displayGoal, isPlanStalled } from '../services/planning/planView';
 
 export default function PlanHome({ theme, onOpenPlan, onBackToChat, onCancelPlan }) {
   const { planSummaries, summariesLoaded, loadPlanSummaries, removePlan } = usePlanStore();
@@ -95,28 +94,27 @@ function PlanRow({ plan, theme, now, onPress, last }) {
   const status = summaryStatus(plan);
   const prog = summaryProgress(plan);
   const pill = statusPill(plan, theme, now);
-  const live = !TERMINAL.includes(status);
-  const c = statusColor(theme, needsYou(plan) ? 'awaiting_approval' : isPlanStalled(plan, now) ? 'paused' : status);
   const title = displayGoal(plan);
   const meta = [
+    pill.label,
     prog.total ? `${prog.done}/${prog.total} steps` : null,
     formatAgo(plan.last_activity_at, now),
     isPlanStalled(plan, now) ? 'no progress >30m' : null,
   ].filter(Boolean).join(' · ');
+  const glyphStatus = isPlanStalled(plan, now) ? 'paused' : needsYou(plan) ? 'awaiting_approval' : status;
 
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={onPress} accessibilityRole="button"
       accessibilityLabel={`${title}. ${pill.label}. ${meta}`}
       style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.separator }]}>
-      <View style={[styles.pill, { backgroundColor: pill.bg }]}>
-        {live && !isPlanStalled(plan, now) ? <LiveLight color={pill.fg} pulse size={5} /> : null}
-        <Text style={[styles.pillText, { color: pill.fg }]} maxFontSizeMultiplier={1.2}>{pill.label}</Text>
+      <View style={styles.leftMark}>
+        <StatusGlyph status={glyphStatus} theme={theme} size={24} />
       </View>
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+      <View style={styles.rowBody}>
         <Text style={[styles.rowTitle, { color: theme.textPrimary }]} numberOfLines={2} maxFontSizeMultiplier={1.2}>{title}</Text>
         <Text style={[styles.rowMeta, { color: theme.textTertiary }]} numberOfLines={1} maxFontSizeMultiplier={1.2}>{meta}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} />
+      <Ionicons name="chevron-forward" size={16} color={theme.textTertiary} style={{ marginTop: 2 }} />
     </TouchableOpacity>
   );
 }
@@ -152,10 +150,10 @@ const styles = StyleSheet.create({
   section: { fontSize: 13, fontWeight: '600', letterSpacing: 0.4, marginTop: 14, marginBottom: 8, marginLeft: 4 },
   groupCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   noMatch: { textAlign: 'center', marginTop: 40, fontSize: 15 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 22, borderRadius: 11 },
-  pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.1 },
-  rowTitle: { fontSize: 15, fontWeight: '600', letterSpacing: -0.24, lineHeight: 20 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 16, paddingVertical: 14, minHeight: 72 },
+  leftMark: { width: 28, height: 28, marginTop: 1, alignItems: 'center', justifyContent: 'center' },
+  rowBody: { flex: 1, minWidth: 0, gap: 3, paddingRight: 4 },
+  rowTitle: { fontSize: 16, fontWeight: '600', letterSpacing: -0.32, lineHeight: 21 },
   rowMeta: { fontSize: 13, letterSpacing: -0.08, lineHeight: 18 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, paddingBottom: 60 },
   illoIcon: { width: 88, height: 88, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
