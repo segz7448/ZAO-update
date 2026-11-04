@@ -2,12 +2,12 @@
  * ZAO - Plan tab. No planId -> Plans home. With planId -> Muse plan detail:
  * solid white/near-black sheet, status pill, ~20/600 title, activity line,
  * time, MAIN mono milestone sections, dashed timeline with outlined
- * check/X/spinner, gray step titles, overflow … for Cancel/Delete.
+ * check/X/spinner, gray step titles. Status only — no Stop/Delete menu.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Animated, Image, Alert, Modal, Platform, ActionSheetIOS,
+  Animated, Image, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,7 +41,7 @@ export default function PlanScreen(props) {
     if (run) onOpenPlan?.(run.id);
   }, [planId, summariesLoaded, planSummaries, onOpenPlan]);
   if (!planId) {
-    return <PlanHome theme={theme} onOpenPlan={(id) => onOpenPlan?.(id)} onBackToChat={props.onClose} onCancelPlan={props.onCancelPlan} />;
+    return <PlanHome theme={theme} onOpenPlan={(id) => onOpenPlan?.(id)} onBackToChat={props.onClose} />;
   }
   return <PlanDetail {...props} theme={theme} />;
 }
@@ -71,17 +71,17 @@ function formatClock(ts) {
   }
 }
 
-function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejectStep, onCancelPlan, onAcceptCheckpoint, onDismissCheckpoint, onStartPlan, onOpenBrowser, browserFrame }) {
+function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejectStep, onAcceptCheckpoint, onDismissCheckpoint, onStartPlan, onOpenBrowser, browserFrame }) {
   const insets = useSafeAreaInsets();
   const rm = useReduceMotion();
   const scrollRef = useRef(null);
   const stepY = useRef({});
-  const { activePlan, isLoading, loadPlan, refreshActivePlan, removePlan } = usePlanStore();
+  const { activePlan, isLoading, loadPlan, refreshActivePlan } = usePlanStore();
   const [detailStep, setDetailStep] = useState(null);
   const [showEarlier, setShowEarlier] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [celebrate, setCelebrate] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+
   const prevDone = useRef(new Set());
   const prevStatus = useRef(null);
 
@@ -190,39 +190,13 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
   const flatDone = steps.filter((s) => s.status === 'done' || s.status === 'skipped');
   const hideEarlier = !showEarlier && flatDone.length > EARLIER_COUNT && sections.length === 1;
 
-  const openOverflow = () => {
-    haptic.light();
-    const canCancel = live;
-    if (Platform.OS === 'ios') {
-      const opts = [];
-      if (canCancel) opts.push('Stop plan');
-      opts.push('Delete plan', 'Cancel');
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: opts, destructiveButtonIndex: canCancel ? 1 : 0, cancelButtonIndex: opts.length - 1 },
-        (i) => {
-          if (canCancel && i === 0) { haptic.warning(); onCancelPlan?.(plan.id); }
-          else if ((canCancel && i === 1) || (!canCancel && i === 0)) confirmDelete();
-        },
-      );
-    } else {
-      setMenuOpen(true);
-    }
-  };
-  const confirmDelete = () => {
-    haptic.warning();
-    Alert.alert('Delete plan?', `"${goal}" and all of its steps will be removed from this phone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { haptic.medium(); await removePlan?.(plan.id); onOpenPlan?.(null); } },
-    ]);
-  };
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
       <View style={[styles.sheet, { backgroundColor: sheetBg, paddingTop: insets.top + 8 }]}>
         <View style={[styles.topChrome, { top: insets.top + 8 }]} pointerEvents="box-none">
           <View style={{ flex: 1 }} />
-          <CircleButton theme={theme} icon="ellipsis-horizontal" size={44} iconSize={20} label="Plan options" onPress={openOverflow} />
-          <CircleButton theme={theme} icon="close" size={44} iconSize={20} label="Close plan" onPress={() => onOpenPlan?.(null)} style={{ marginLeft: 8 }} />
+          <CircleButton theme={theme} icon="close" size={44} iconSize={20} label="Close plan" onPress={() => onOpenPlan?.(null)} />
         </View>
 
         <ScrollView
@@ -285,30 +259,12 @@ function PlanDetail({ theme, planId, onClose, onOpenPlan, onApproveStep, onRejec
 
       </View>
 
-      <Dock theme={theme} dock={dock} plan={plan} insets={insets} onStartPlan={onStartPlan} onCancelPlan={onCancelPlan}
+      <Dock theme={theme} dock={dock} plan={plan} insets={insets} onStartPlan={onStartPlan}
         onApproveStep={onApproveStep} onRejectStep={onRejectStep} onAcceptCheckpoint={onAcceptCheckpoint} onDismissCheckpoint={onDismissCheckpoint} />
 
       {celebrate ? <Completion theme={theme} plan={plan} onDone={() => setCelebrate(false)} /> : null}
       <StepDetailSheet step={sheetStep} visible={!!sheetStep} onClose={() => setDetailStep(null)} theme={theme} />
 
-      {menuOpen ? (
-        <Modal transparent animationType="fade" visible onRequestClose={() => setMenuOpen(false)}>
-          <TouchableOpacity style={styles.menuScrim} activeOpacity={1} onPress={() => setMenuOpen(false)} />
-          <View style={[styles.menuSheet, { backgroundColor: sheetBg, paddingBottom: insets.bottom + 12 }]}>
-            {live ? (
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); haptic.warning(); onCancelPlan?.(plan.id); }}>
-                <Text style={[styles.menuText, { color: theme.mode === 'dark' ? '#FF9F0A' : '#FF9500' }]}>Stop plan</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); confirmDelete(); }}>
-              <Text style={[styles.menuText, { color: theme.mode === 'dark' ? '#FF453A' : '#FF3B30' }]}>Delete plan</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => setMenuOpen(false)}>
-              <Text style={[styles.menuText, { color: theme.textPrimary }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      ) : null}
     </View>
   );
 }
@@ -364,7 +320,7 @@ function MuseStep({ node, last, theme, now, titleColor, animateIn, onLayout, onP
   );
 }
 
-function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveStep, onRejectStep, onAcceptCheckpoint, onDismissCheckpoint }) {
+function Dock({ theme, dock, plan, insets, onStartPlan, onApproveStep, onRejectStep, onAcceptCheckpoint, onDismissCheckpoint }) {
   if (dock.kind === 'none' || dock.kind === 'terminal') return null;
   const cpId = plan.checkpoint_plan_id || plan.id;
   const sheetBg = theme.card || (theme.mode === 'dark' ? '#1C1C1E' : '#FFFFFF');
@@ -373,7 +329,6 @@ function Dock({ theme, dock, plan, insets, onStartPlan, onCancelPlan, onApproveS
     body = (<>
       <DockInfo theme={theme} icon="play-circle" color={theme.brandStrong} title="Ready when you are" text={`${(plan.steps || []).length} steps planned. Review them, then start.`} />
       <View style={styles.dockBtns}>
-        <DenyButton theme={theme} label="Cancel" style={styles.flex} onPress={() => { haptic.light(); onCancelPlan?.(plan.id); }} />
         <AllowButton label="Start plan" icon="play" style={styles.flex} onPress={() => { haptic.medium(); onStartPlan?.(plan.id); }} />
       </View>
     </>);
@@ -503,8 +458,4 @@ const styles = StyleSheet.create({
   celebTitle: { fontSize: 22, fontWeight: '700' },
   celebGoal: { fontSize: 15, textAlign: 'center' },
   celebStats: { flexDirection: 'row', alignSelf: 'stretch', marginVertical: 8 },
-  menuScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
-  menuSheet: { position: 'absolute', left: 12, right: 12, bottom: 12, borderRadius: 16, overflow: 'hidden' },
-  menuItem: { paddingVertical: 16, paddingHorizontal: 18, alignItems: 'center' },
-  menuText: { fontSize: 17, fontWeight: '600' },
 });

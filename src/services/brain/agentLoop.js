@@ -95,8 +95,12 @@ Say done:false only if the ORIGINAL request clearly has a distinct part that thi
  *   route's own onStep/onBrowserStep/onPlanStep callbacks.
  * @returns {Promise<{ success, data, error }>}
  */
-export async function runAgentLoop(params, handlers, { isCancelled = () => false, onLoopStep = null } = {}) {
-  const { lastMessageText, webSearchEnabled } = params;
+export async function runAgentLoop(params, handlers, { isCancelled = () => false, onLoopStep = null, drainSteers = null } = {}) {
+  const { webSearchEnabled } = params;
+  // Mutable working copy so mid-run steers (composer sends while Working…)
+  // can be folded in at the next step boundary without starting a new loop.
+  let lastMessageText = params.lastMessageText;
+  let history = Array.isArray(params.history) ? params.history.slice() : [];
 
   const [projectBlock, autoMemoryBlock, prefsResult] = await Promise.all([
     getProjectInstructionsBlock(),
@@ -142,11 +146,33 @@ export async function runAgentLoop(params, handlers, { isCancelled = () => false
 
   for (let iteration = 0; iteration < MAX_LOOP_ITERATIONS; iteration += 1) {
     if (isCancelled()) {
-      return lastResult || {
-        success: false,
-        data: null,
-        error: { type: 'CANCELLED', message: 'Stopped.' },
+      return {
+        success: true,
+        data: {
+          content: 'Stopped. Say “continue” and I’ll pick up from where I left off.',
+          family: 'local',
+          provider: 'local',
+          modelId: 'stop',
+          stopped: true,
+        },
+        error: null,
       };
+    }
+
+    // Mid-run composer sends: drain at the step boundary and fold into this
+    // turn's working message + history (steering), rather than answering each
+    // one in isolation.
+    if (typeof drainSteers === 'function') {
+      const steers = drainSteers() || [];
+      if (steers.length) {
+        const coalesced = steers.map((s) => (s && s.text ? String(s.text).trim() : '')).filter(Boolean).join('\n');
+        if (coalesced) {
+          lastMessageText = `${lastMessageText}\n\n[Additional user input while working:\n${coalesced}]`;
+          for (const s of steers) {
+            if (s && s.text) history.push({ role: 'user', content: String(s.text) });
+          }
+        }
+      }
     }
 
     // ---- GATHER ----
@@ -164,8 +190,26 @@ export async function runAgentLoop(params, handlers, { isCancelled = () => false
     attemptedRoutes.push(route);
     onLoopStep?.({ route, reason, iteration });
 
-    const stepResult = await runOneRoute(route, effectiveMessage, { ...params, standingContext }, handlers);
+    const stepResult = await runOneRoute(route, effectiveMessage, { ...params, history, standingContext }, handlers);
     lastResult = stepResult;
+
+    // Honor composer Stop at the post-step boundary too (not only at the
+    // top of the next iteration), so a cancel mid-tool is observed before
+    // we return a completed step as if nothing happened.
+    if (isCancelled()) {
+      return {
+        success: true,
+        data: {
+          content: 'Stopped. Say “continue” and I’ll pick up from where I left off.',
+          family: 'local',
+          provider: 'local',
+          modelId: 'stop',
+          stopped: true,
+          priorResult: stepResult.success ? stepResult.data : null,
+        },
+        error: null,
+      };
+    }
 
     if (!stepResult.success) {
       // A real failure (backend down, tool error, no browser session) is
@@ -176,11 +220,21 @@ export async function runAgentLoop(params, handlers, { isCancelled = () => false
     }
 
     if (route === BRAIN_ROUTES.CHAT) {
-      // Plain chat is always a terminal answer - no verify call. This is
-      // also where every other route lands once decideRoute() has
-      // exhausted the useful actions (see frontendBrain.js's
-      // priorAttempts escalation) and falls through to CHAT to
-      // synthesize a final answer from whatever was gathered.
+      // Plain chat is normally terminal — but if the person sent more
+      // messages while this reply was streaming, fold them in and keep
+      // looping rather than orphaning the steers until a manual continue.
+      if (typeof drainSteers === 'function' && !isCancelled()) {
+        const late = drainSteers() || [];
+        const lateText = late.map((s) => (s && s.text ? String(s.text).trim() : '')).filter(Boolean).join('\n');
+        if (lateText) {
+          lastMessageText = `${lastMessageText}\n\n[Additional user input while working:\n${lateText}]`;
+          for (const s of late) {
+            if (s && s.text) history.push({ role: 'user', content: String(s.text) });
+          }
+          priorResultsSummary.push(summarizeForNextIteration(route, stepResult));
+          continue;
+        }
+      }
       return stepResult;
     }
 

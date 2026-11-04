@@ -133,6 +133,9 @@ export const lightTheme = {
   assistantUsesBubble: true,
 
   speak: '#0B0B0B',
+  sendAccent: '#E53935',       // Muse typing-send (red filled arrow)
+  stopSoft: '#F5D0C5',         // Muse running-stop peach circle
+  stopGlyph: '#111111',
   speakText: '#FFFFFF',
   sendDisabled: '#C7C7CC',
   citationCard: '#F1F2F1',
@@ -218,6 +221,9 @@ export const darkTheme = {
   assistantUsesBubble: true,
 
   speak: '#FFFFFF',               // Grok Speak/send: white in dark
+  sendAccent: '#FF453A',           // Muse typing-send
+  stopSoft: '#5A3A32',             // dark peach-tinted stop circle
+  stopGlyph: '#FFFFFF',
   speakText: '#000000',
   sendDisabled: '#3A3A3C',
   citationCard: '#1C1C1C',

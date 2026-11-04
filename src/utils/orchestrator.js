@@ -155,6 +155,7 @@ export async function sendMessageOrchestrated({
   onPlanStep = null,
   isCancelled = () => false,
   onLoopStep = null,
+  drainSteers = null,
   onToken = null,
   onThinkingToken = null,
 }) {
@@ -193,7 +194,7 @@ export async function sendMessageOrchestrated({
       runChat: runChatHandler,
     };
 
-    return await runAgentLoop(params, handlers, { isCancelled, onLoopStep });
+    return await runAgentLoop(params, handlers, { isCancelled, onLoopStep, drainSteers });
   } catch (err) {
     // Absolute last-resort catch. The UI should never see an uncaught exception
     // from this function, no matter what goes wrong internally.

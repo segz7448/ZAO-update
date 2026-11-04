@@ -469,17 +469,13 @@ export const usePlanStore = create((set, get) => ({
     return result;
   },
 
-  async removePlan(planId) {
-    const result = await dbDeletePlan(planId);
-    if (result.success) {
-      set((state) => ({
-        activePlan: state.activePlan?.id === planId ? null : state.activePlan,
-        plans: state.plans.filter((p) => p.id !== planId),
-        planSummaries: state.planSummaries.filter((p) => p.id !== planId),
-        resumablePlans: state.resumablePlans.filter((p) => p.id !== planId),
-      }));
-    }
-    return result;
+  /**
+   * Plans cannot be deleted (Zenas / Muse). Stop lives in the chat composer
+   * and pauses a run; history is kept. DB deletePlan remains for migrations
+   * only and is not called from the app UI.
+   */
+  async removePlan(_planId) {
+    return { success: false, error: 'Plans cannot be deleted.' };
   },
 
   clearActivePlan() {

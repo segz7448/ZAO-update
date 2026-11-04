@@ -1,8 +1,7 @@
 /**
  * ZAO - Plans home (Plan tab with no plan picked).
  * Solid opaque rows (Muse): small status pill/ring, 15–16px semibold title,
- * 13px gray meta. No swipe Cancel/Delete — those live on the plan-detail
- * overflow menu.
+ * 13px gray meta. Plans cannot be deleted; Stop lives in the chat composer.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
@@ -12,8 +11,8 @@ import { usePlanStore } from '../store/planStore';
 import { StatusGlyph, PLAN_STATUS_LABEL } from '../components/planFx';
 import { groupPlans, filterPlans, FILTERS, summaryStatus, summaryProgress, needsYou, formatAgo, TERMINAL, displayGoal, isPlanStalled } from '../services/planning/planView';
 
-export default function PlanHome({ theme, onOpenPlan, onBackToChat, onCancelPlan }) {
-  const { planSummaries, summariesLoaded, loadPlanSummaries, removePlan } = usePlanStore();
+export default function PlanHome({ theme, onOpenPlan, onBackToChat }) {
+  const { planSummaries, summariesLoaded, loadPlanSummaries } = usePlanStore();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [now, setNow] = useState(Date.now());

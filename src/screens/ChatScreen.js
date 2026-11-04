@@ -482,7 +482,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
   }).current;
 
   const {
-    messages, isSending, error,
+    messages, isSending, error, stopCurrentRun,
     browsingSteps, planProgress, planSteps, streamingText, streamingThinking,
     sendMessage, clearError, editMessage,
     regenerateMessage, setFeedback,
@@ -648,7 +648,14 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
       stopDictation({ andSend: true });
       return;
     }
-    if ((!inputText.trim() && !pendingAttachment) || isSending) return;
+    const empty = !inputText.trim() && !pendingAttachment;
+    // Empty + working → Stop (scoped to this run only). Typing morphs back to Send.
+    if (empty && isSending) {
+      haptic.warning();
+      stopCurrentRun();
+      return;
+    }
+    if (empty) return;
     const text = inputText;
     const attachment = pendingAttachment;
     setInputText('');
@@ -1026,14 +1033,14 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
                   height={28}
                 />
                 <TouchableOpacity
-                  style={[styles.sendCircle, { backgroundColor: (liveText.trim() || pendingAttachment) ? theme.speak : theme.sendDisabled }]}
+                  style={[styles.sendCircle, { backgroundColor: (liveText.trim() || pendingAttachment) ? (theme.sendAccent || theme.speak) : theme.sendDisabled }]}
                   onPress={() => { haptic.medium(); handleSend(); }}
                   accessibilityLabel="Send"
                 >
                   <Ionicons
                     name="arrow-up"
                     size={18}
-                    color={(liveText.trim() || pendingAttachment) ? theme.speakText : '#FFFFFF'}
+                    color="#FFFFFF"
                   />
                 </TouchableOpacity>
               </>
@@ -1076,34 +1083,54 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
 
                 <View style={{ flex: 1 }} />
 
-                <Animated.View style={{ transform: [{ scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }}>
+                {/* Mic stays left of send/stop. While Working… + empty input, mic is a plain glyph (Muse). */}
+                {isSending && !hasText && !editingMessageId ? (
                   <TouchableOpacity
-                    style={[styles.micCircle, { backgroundColor: theme.fill }]}
                     onPress={() => { haptic.light(); startDictation(inputText); }}
                     accessibilityLabel="Dictate"
+                    hitSlop={8}
+                    style={{ width: 28, height: 32, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Ionicons name="mic" size={18} color={theme.textSecondary} />
+                    <Ionicons name="mic" size={20} color={theme.textPrimary} />
                   </TouchableOpacity>
-                </Animated.View>
+                ) : (
+                  <Animated.View style={{ transform: [{ scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }}>
+                    <TouchableOpacity
+                      style={[styles.micCircle, { backgroundColor: theme.fill }]}
+                      onPress={() => { haptic.light(); startDictation(inputText); }}
+                      accessibilityLabel="Dictate"
+                    >
+                      <Ionicons name="mic" size={18} color={theme.textSecondary} />
+                    </TouchableOpacity>
+                  </Animated.View>
+                )}
 
                 <Animated.View style={{ transform: [{ scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }] }}>
                   {editingMessageId ? (
                     <TouchableOpacity
-                      style={[styles.sendCircle, { backgroundColor: hasText ? theme.speak : theme.sendDisabled }]}
+                      style={[styles.sendCircle, { backgroundColor: hasText ? (theme.sendAccent || theme.speak) : theme.sendDisabled }]}
                       onPress={() => { haptic.medium(); handleSaveEdit(); }}
                       disabled={!hasText}
                       accessibilityLabel="Save edit"
                     >
-                      <Ionicons name="checkmark" size={18} color={theme.speakText} />
+                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  ) : isSending && !hasText ? (
+                    <TouchableOpacity
+                      style={[styles.sendCircle, { backgroundColor: theme.stopSoft || '#F5D0C5' }]}
+                      onPress={() => { haptic.warning(); stopCurrentRun(); }}
+                      accessibilityLabel="Stop current task"
+                    >
+                      <View style={[styles.stopSquare, { backgroundColor: theme.stopGlyph || theme.textPrimary, borderRadius: 3 }]} />
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      style={[styles.sendCircle, { backgroundColor: !hasText || isSending ? theme.sendDisabled : theme.speak }]}
+                      style={[styles.sendCircle, { backgroundColor: hasText ? (theme.sendAccent || theme.speak) : theme.sendDisabled }]}
                       onPress={() => { haptic.medium(); handleSend(); }}
-                      disabled={!hasText || isSending}
+                      disabled={!hasText}
                       accessibilityLabel="Send"
                     >
-                      <Ionicons name="arrow-up" size={18} color={!hasText || isSending ? '#FFFFFF' : theme.speakText} />
+                      <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
                     </TouchableOpacity>
                   )}
                 </Animated.View>

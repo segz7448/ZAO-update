@@ -30,6 +30,16 @@ import { getMemorySystemMessage, extractMemoriesFromTurn, detectExplicitMemoryCo
 import { buildWorkingHistory } from '../services/memory/workingMemory';
 import { shouldAttemptRecall, retrieveRelevantContext } from '../services/memory/retrievalMemory';
 import { getFeedbackGuidanceMessage, recordDislikeFeedback } from '../services/memory/feedbackMemory';
+import {
+  initialRunState,
+  startRun as ctrlStartRun,
+  requestStop as ctrlRequestStop,
+  isRunCancelled,
+  enqueueSteer,
+  drainSteers as ctrlDrainSteers,
+  endRun as ctrlEndRun,
+} from '../services/chat/runController';
+import { usePlanStore } from './planStore';
 
 /**
  * Assembles the exact `history` array sent to the model for a turn,
@@ -201,6 +211,11 @@ export const useChatStore = create((set, get) => ({
   conversations: [], // list for the sidebar - {id, title, updated_at, ...}
   messages: [], // { id, role, content, provider, model_family, is_error, created_at }
   isSending: false,
+  // Muse-style concurrent run: mid-run sends enqueue as steers; Stop is
+  // scoped to activeRunId only (see src/services/chat/runController.js).
+  activeRunId: null,
+  cancelRunId: null,
+  pendingSteers: [],
   error: null,
   // Live browser-agent progress for the message currently being sent.
   // Reset to null at the start of every send; populated only when the
@@ -599,6 +614,33 @@ export const useChatStore = create((set, get) => ({
     }));
   },
 
+  /**
+   * Composer Stop: abort ONLY the in-flight run from the latest request.
+   * Marks hierarchical plans paused (resumable via "continue"), does not
+   * delete plans or kill unrelated background work.
+   */
+  stopCurrentRun() {
+    const before = {
+      activeRunId: get().activeRunId,
+      cancelRunId: get().cancelRunId,
+      pendingSteers: get().pendingSteers,
+    };
+    const next = ctrlRequestStop(before);
+    if (next.cancelRunId === before.cancelRunId) return; // idle
+    set({ cancelRunId: next.cancelRunId });
+    try {
+      const planStore = usePlanStore.getState();
+      planStore.requestCancel?.();
+      const plan = planStore.activePlan;
+      if (plan && !['completed', 'failed', 'cancelled', 'paused'].includes(plan.status)) {
+        // Pause (resumable) — never delete; composer Stop is not plan Delete.
+        Promise.resolve(planStore.setPlanStatus(plan.id, 'paused')).catch(() => {});
+      }
+    } catch (_) {
+      // Plan pause is best-effort; the agent-loop cancel flag stops the turn.
+    }
+  },
+
   async sendMessage(userText, attachment = null, { webSearchEnabled = false, githubToolsEnabled = false, browserAgentActive = false } = {}) {
     const trimmed = (userText || '').trim();
     if (!trimmed && !attachment) return;
@@ -765,18 +807,13 @@ export const useChatStore = create((set, get) => ({
       attachment_name: userAttachmentName,
     };
 
-    // Optimistic local write + UI update
+    // Optimistic local write + UI update — always append the bubble immediately,
+    // even when another run is already in flight (Muse multi-send).
     const saveResult = await addMessage(userMessage);
     const isFirstMessage = get().messages.length === 0;
     set((state) => ({
       messages: [...state.messages, saveResult.data || userMessage],
-      isSending: true,
       error: null,
-      browsingSteps: [],
-      planProgress: null,
-      planSteps: [],
-      streamingText: null,
-      streamingThinking: null,
     }));
 
     // Auto-title the conversation from the first message, same pattern as
@@ -786,6 +823,24 @@ export const useChatStore = create((set, get) => ({
       const title = titleSource.length > 60 ? `${titleSource.slice(0, 57).trim()}...` : titleSource;
       await updateConversationMeta(conversationId, { title });
       await get().loadConversationList();
+    }
+
+    // Mid-run send: enqueue as steering for the active loop. Do NOT start a
+    // second orchestrator call — the agent folds these in at the next step
+    // boundary (or they remain in history for a later "continue").
+    if (get().activeRunId) {
+      const steerText = wireContent || messageContent;
+      const ctrl = {
+        activeRunId: get().activeRunId,
+        cancelRunId: get().cancelRunId,
+        pendingSteers: get().pendingSteers,
+      };
+      const { state: next, accepted } = enqueueSteer(ctrl, { id: userMessage.id, text: steerText });
+      if (accepted) {
+        set({ pendingSteers: next.pendingSteers });
+        return;
+      }
+      // Fall through and start a run if enqueue rejected (idle race).
     }
 
     const prefs = usePreferencesStore.getState().preferences;
@@ -832,13 +887,50 @@ export const useChatStore = create((set, get) => ({
       console.warn('[ChatStore] Had an attachment but no base64 - outbound message is TEXT-ONLY. The model will not see an image.');
     }
 
-    const result = await sendMessageOrchestrated({
+    const runId = uuidv4();
+    {
+      const started = ctrlStartRun({
+        activeRunId: get().activeRunId,
+        cancelRunId: get().cancelRunId,
+        pendingSteers: get().pendingSteers,
+      }, runId);
+      set({
+        activeRunId: started.activeRunId,
+        cancelRunId: started.cancelRunId,
+        pendingSteers: started.pendingSteers,
+        isSending: true,
+        browsingSteps: [],
+        planProgress: null,
+        planSteps: [],
+        streamingText: null,
+        streamingThinking: null,
+      });
+      try { usePlanStore.getState().resetCancelFlag?.(); } catch (_) {}
+    }
+
+    let result;
+    try {
+    result = await sendMessageOrchestrated({
       history,
       browserAccessEnabled: !!prefs.browser_access_enabled,
       browserAgentActive: !!browserAgentActive,
       webSearchEnabled: !!webSearchEnabled,
       githubToolsEnabled: !!githubToolsEnabled,
       lastMessageText: wireContent,
+      isCancelled: () => isRunCancelled({
+        activeRunId: get().activeRunId,
+        cancelRunId: get().cancelRunId,
+        pendingSteers: get().pendingSteers,
+      }, runId),
+      drainSteers: () => {
+        const drained = ctrlDrainSteers({
+          activeRunId: get().activeRunId,
+          cancelRunId: get().cancelRunId,
+          pendingSteers: get().pendingSteers,
+        });
+        set({ pendingSteers: drained.state.pendingSteers });
+        return drained.steers;
+      },
       // The connected BrowserAgentStream to the PC's Playwright agent
       // (src/services/browserAgent/browserAgentStream.js), set via
       // setAgentSession() from wherever BrowserAgentPiP mounts. Live
@@ -915,6 +1007,19 @@ export const useChatStore = create((set, get) => ({
         streamingText: null,
         streamingThinking: null,
       }));
+    }
+    } finally {
+      const ended = ctrlEndRun({
+        activeRunId: get().activeRunId,
+        cancelRunId: get().cancelRunId,
+        pendingSteers: get().pendingSteers,
+      }, runId);
+      set({
+        activeRunId: ended.activeRunId,
+        cancelRunId: ended.cancelRunId,
+        pendingSteers: ended.pendingSteers,
+        isSending: ended.activeRunId ? get().isSending : false,
+      });
     }
   },
 }));
