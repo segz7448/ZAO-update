@@ -19,6 +19,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { AppIconTile } from '../ui/icons';
 import { Ionicons } from '@expo/vector-icons';
 import { CircleButton, ZaoAvatar, AllowButton, DenyButton, GlassFill, glassSurface, haptic } from '../ui/ios';
+import DictationWaveform from '../components/DictationWaveform';
+import { useDictation } from '../services/dictation/useDictation';
 import BrowserCard, { BrowserMiniIndicator } from '../components/BrowserCard';
 import { PluginPreviewCard, parsePluginPreview } from '../components/PluginPreviewCard';
 import { useComposerDraftStore } from '../store/composerDraftStore';
@@ -617,7 +619,35 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
     }
   }, [messages.length]);
 
+  // Grok-style mic dictation (expo-speech-recognition). Needs a native rebuild
+  // after adding the config plugin — Expo Go / stale binaries get a friendly alert.
+  const dictationCommitRef = useRef(null);
+  const { state: dictationState, liveText, isRecording, start: startDictation, stop: stopDictation } = useDictation({
+    onCommit: (text, meta = {}) => {
+      dictationCommitRef.current?.(text, meta);
+    },
+  });
+  dictationCommitRef.current = async (text, { send } = {}) => {
+    const trimmed = String(text || '').trim();
+    if (send) {
+      if (!trimmed && !pendingAttachment) {
+        setInputText(text || '');
+        return;
+      }
+      setInputText('');
+      await sendMessage(trimmed, pendingAttachment, { webSearchEnabled, githubToolsEnabled, browserAgentActive });
+      setPendingAttachment(null);
+      return;
+    }
+    setInputText(text || '');
+  };
+
   const handleSend = async () => {
+    // Send while recording: stop recognition, then send the committed transcript.
+    if (isRecording) {
+      stopDictation({ andSend: true });
+      return;
+    }
     if ((!inputText.trim() && !pendingAttachment) || isSending) return;
     const text = inputText;
     const attachment = pendingAttachment;
@@ -948,90 +978,137 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, o
         </View>
       )}
 
-      {/* Final mix: v1 composer card (Message on top, controls row below) under the v2 header */}
-      <View style={styles.composerWrap}>
-        <View style={[styles.composerCard, glassSurface(theme, 22)]}>
-          <GlassFill theme={theme} radius={22} strong />
+      {/* Solid opaque composer (white / #1C1C1E) — no glass bleed-through. */}
+      <View style={[styles.composerWrap, { backgroundColor: theme.barTint || theme.background }]}>
+        <View style={[
+          styles.composerCard,
+          {
+            backgroundColor: theme.composer,
+            borderColor: theme.composerBorder,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowRadius: 16,
+            shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.12,
+            elevation: 6,
+          },
+        ]}>
           <TextInput
-            style={[styles.textInput, { color: theme.textPrimary }]}
-            value={inputText}
-            onChangeText={setInputText}
+            style={[
+              styles.textInput,
+              {
+                color: isRecording ? theme.textSecondary : theme.textPrimary,
+                fontStyle: isRecording ? 'italic' : 'normal',
+              },
+            ]}
+            value={isRecording ? liveText : inputText}
+            onChangeText={(t) => {
+              if (isRecording) return; // live transcript owns the field while recording
+              setInputText(t);
+            }}
             placeholder="Message"
             placeholderTextColor={theme.textTertiary}
             multiline
             maxLength={8000}
           />
           <View style={styles.composerControls}>
-            <TouchableOpacity
-              style={[styles.plusButton, { backgroundColor: theme.fill }]}
-              onPress={() => { haptic.light(); setAttachmentVisible(true); }}
-              accessibilityLabel="Add attachment"
-            >
-              <Ionicons name="add" size={22} color={theme.textSecondary} />
-            </TouchableOpacity>
+            {isRecording ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.micCircle, { backgroundColor: theme.fill }]}
+                  onPress={() => { haptic.medium(); stopDictation(); }}
+                  accessibilityLabel="Stop dictation"
+                >
+                  <View style={[styles.stopSquare, { backgroundColor: theme.textPrimary }]} />
+                </TouchableOpacity>
+                <DictationWaveform
+                  levels={dictationState.levels}
+                  color={theme.textTertiary}
+                  height={28}
+                />
+                <TouchableOpacity
+                  style={[styles.sendCircle, { backgroundColor: (liveText.trim() || pendingAttachment) ? theme.speak : theme.sendDisabled }]}
+                  onPress={() => { haptic.medium(); handleSend(); }}
+                  accessibilityLabel="Send"
+                >
+                  <Ionicons
+                    name="arrow-up"
+                    size={18}
+                    color={(liveText.trim() || pendingAttachment) ? theme.speakText : '#FFFFFF'}
+                  />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.plusButton, { backgroundColor: theme.fill }]}
+                  onPress={() => { haptic.light(); setAttachmentVisible(true); }}
+                  accessibilityLabel="Add attachment"
+                >
+                  <Ionicons name="add" size={22} color={theme.textSecondary} />
+                </TouchableOpacity>
 
-            <View style={[styles.modelPill, { backgroundColor: theme.fill }]}>
-              <Ionicons name="sparkles" size={13} color={theme.brand} />
-              <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
-                {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
-              </Text>
-            </View>
+                <View style={[styles.modelPill, { backgroundColor: theme.fill }]}>
+                  <Ionicons name="sparkles" size={13} color={theme.brand} />
+                  <Text style={[styles.modelPillText, { color: theme.textPrimary }]}>
+                    {(preferences.permission_mode || 'auto').replace(/^./, (c) => c.toUpperCase())}
+                  </Text>
+                </View>
 
-            <TouchableOpacity
-              style={[
-                styles.browserToggle,
-                { backgroundColor: theme.fill },
-                preferences.browser_access_enabled && { backgroundColor: theme.infoSoft },
-              ]}
-              onPress={() => { haptic.select(); setBrowserAccessEnabled(!preferences.browser_access_enabled); }}
-              onLongPress={() => onOpenBrowser?.()}
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityState={{ selected: !!preferences.browser_access_enabled }}
-              accessibilityLabel="Toggle browser access on or off. Long-press to open the live browser view."
-            >
-              <Ionicons
-                name={preferences.browser_access_enabled ? 'globe' : 'globe-outline'}
-                size={18}
-                color={preferences.browser_access_enabled ? theme.brand : theme.textSecondary}
-              />
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.browserToggle,
+                    { backgroundColor: theme.fill },
+                    preferences.browser_access_enabled && { backgroundColor: theme.infoSoft },
+                  ]}
+                  onPress={() => { haptic.select(); setBrowserAccessEnabled(!preferences.browser_access_enabled); }}
+                  onLongPress={() => onOpenBrowser?.()}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !!preferences.browser_access_enabled }}
+                  accessibilityLabel="Toggle browser access on or off. Long-press to open the live browser view."
+                >
+                  <Ionicons
+                    name={preferences.browser_access_enabled ? 'globe' : 'globe-outline'}
+                    size={18}
+                    color={preferences.browser_access_enabled ? theme.brand : theme.textSecondary}
+                  />
+                </TouchableOpacity>
 
-            <View style={{ flex: 1 }} />
+                <View style={{ flex: 1 }} />
 
-            <View style={styles.actionSlot}>
-              <Animated.View
-                pointerEvents="auto"
-                style={[
-                  styles.sendButtonWrap,
-                  {
-                    transform: [
-                      { scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) },
-                    ],
-                  },
-                ]}
-              >
-                {editingMessageId ? (
+                <Animated.View style={{ transform: [{ scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }}>
                   <TouchableOpacity
-                    style={[styles.sendCircle, { backgroundColor: hasText ? theme.speak : theme.sendDisabled }]}
-                    onPress={() => { haptic.medium(); handleSaveEdit(); }}
-                    disabled={!hasText}
-                    accessibilityLabel="Save edit"
+                    style={[styles.micCircle, { backgroundColor: theme.fill }]}
+                    onPress={() => { haptic.light(); startDictation(inputText); }}
+                    accessibilityLabel="Dictate"
                   >
-                    <Ionicons name="checkmark" size={18} color={theme.speakText} />
+                    <Ionicons name="mic" size={18} color={theme.textSecondary} />
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.sendCircle, { backgroundColor: !hasText || isSending ? theme.sendDisabled : theme.speak }]}
-                    onPress={() => { haptic.medium(); handleSend(); }}
-                    disabled={!hasText || isSending}
-                    accessibilityLabel="Send"
-                  >
-                    <Ionicons name="arrow-up" size={18} color={!hasText || isSending ? '#FFFFFF' : theme.speakText} />
-                  </TouchableOpacity>
-                )}
-              </Animated.View>
-            </View>
+                </Animated.View>
+
+                <Animated.View style={{ transform: [{ scale: composerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }] }}>
+                  {editingMessageId ? (
+                    <TouchableOpacity
+                      style={[styles.sendCircle, { backgroundColor: hasText ? theme.speak : theme.sendDisabled }]}
+                      onPress={() => { haptic.medium(); handleSaveEdit(); }}
+                      disabled={!hasText}
+                      accessibilityLabel="Save edit"
+                    >
+                      <Ionicons name="checkmark" size={18} color={theme.speakText} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.sendCircle, { backgroundColor: !hasText || isSending ? theme.sendDisabled : theme.speak }]}
+                      onPress={() => { haptic.medium(); handleSend(); }}
+                      disabled={!hasText || isSending}
+                      accessibilityLabel="Send"
+                    >
+                      <Ionicons name="arrow-up" size={18} color={!hasText || isSending ? '#FFFFFF' : theme.speakText} />
+                    </TouchableOpacity>
+                  )}
+                </Animated.View>
+              </>
+            )}
           </View>
         </View>
       </View>
@@ -1456,6 +1533,19 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingHorizontal: 10,
     paddingBottom: 8,
+    overflow: 'visible',
+  },
+  micCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopSquare: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
   },
   composerControls: {
     flexDirection: 'row',

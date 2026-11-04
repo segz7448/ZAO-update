@@ -169,7 +169,7 @@ export const darkTheme = {
   secondarySystemBackground: '#272727', // Muse sheet
   tertiarySystemBackground: '#474747',  // Muse sheet card
   surfaceElevated: '#272727',
-  composer: '#1A1A1A',            // Grok composer fill
+  composer: '#1C1C1E',            // solid opaque composer (matches card)
   composerBorder: 'rgba(255,255,255,0.06)',
   border: '#2A2A2A',
   separator: 'rgba(255,255,255,0.08)',

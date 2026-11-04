@@ -9,7 +9,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "associatedDomains": []
+      "associatedDomains": [],
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "ZAO needs the microphone so you can dictate messages into the composer.",
+        "NSSpeechRecognitionUsageDescription": "ZAO uses on-device speech recognition to turn your voice into text in the composer."
+      }
     },
     "android": {
       "package": "com.zenas.zao",
@@ -19,7 +23,8 @@
         "ACCESS_NETWORK_STATE",
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "READ_MEDIA_IMAGES"
+        "READ_MEDIA_IMAGES",
+        "RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -86,6 +91,16 @@
           "cameraPermission": "ZAO needs camera access to scan authenticator QR codes.",
           "microphonePermission": false,
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "ZAO needs the microphone so you can dictate messages into the composer.",
+          "speechRecognitionPermission": "ZAO uses on-device speech recognition to turn your voice into text in the composer.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ]
     ],
