@@ -443,7 +443,7 @@ function formatBrowsingStepLabel(stepInfo) {
   }
 }
 
-export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAgent, onExpandBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
+export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
   const theme = useTheme();
   // Inline browser cards (browserCardStore, fed by App's one BrowserAgentStream).
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -696,8 +696,8 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             theme={theme}
             icon="desktop-outline"
             iconSize={20}
-            label="Open computer view"
-            onPress={onOpenBrowserAgent}
+            label="Open the browser"
+            onPress={onOpenBrowser}
             style={browserAgentActive ? { borderWidth: 1.5, borderColor: theme.brand } : null}
           />
           <CircleButton theme={theme} icon="create-outline" iconSize={20} label="New chat" onPress={onNewChat} />
@@ -711,7 +711,6 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
         {[
           { key: 'chat', label: 'Chat' },
           { key: 'plan', label: 'Plan' },
-          { key: 'browse', label: 'Browse' },
         ].map((mode) => {
           const selected = activeMode === mode.key;
           return (
@@ -722,7 +721,6 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
                 haptic.select();
                 if (mode.key === 'chat') return;
                 if (mode.key === 'plan') onOpenPlan?.(null);
-                if (mode.key === 'browse') onOpenBrowserAgent?.();
               }}
               accessibilityRole="button"
               accessibilityState={{ selected }}
@@ -759,7 +757,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
             card={item.card}
             theme={theme}
             stream={browserStream}
-            onExpand={onExpandBrowser}
+            onExpand={onOpenBrowser}
             onToggleCollapsed={() => toggleBrowserCard(item.card.id)}
             onStopRequested={() => dispatchBrowserCard({ type: 'stopRequested' })}
           />
@@ -951,7 +949,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowserAge
                 preferences.browser_access_enabled && { backgroundColor: theme.infoSoft },
               ]}
               onPress={() => { haptic.select(); setBrowserAccessEnabled(!preferences.browser_access_enabled); }}
-              onLongPress={() => onOpenBrowserAgent?.()}
+              onLongPress={() => onOpenBrowser?.()}
               hitSlop={4}
               accessibilityRole="button"
               accessibilityState={{ selected: !!preferences.browser_access_enabled }}
@@ -1103,6 +1101,8 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   modeTab: {
+    minWidth: 76, // two equal segments (Chat | Plan) so the control stays balanced
+    alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,

@@ -4,9 +4,8 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ChatScreen from './src/screens/ChatScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
-import BrowserAgentScreen from './src/screens/BrowserAgentScreen';
 import PlanScreen from './src/screens/PlanScreen';
-import BrowserAgentPiP from './src/services/browserAgent/BrowserAgentPiP';
+import BrowserFullscreen from './src/components/BrowserFullscreen';
 import { BrowserAgentStream } from './src/services/browserAgent/browserAgentStream';
 import { attachBrowserCardStream } from './src/store/browserCardStore';
 import SidebarDrawer from './src/components/SidebarDrawer';
@@ -27,7 +26,7 @@ function AppShell() {
   const resolvedMode = useResolvedThemeMode();
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState(null);
-  const [screen, setScreen] = useState('chat'); // 'chat' | 'settings' | 'browserAgent' | 'plan'
+  const [screen, setScreen] = useState('chat'); // 'chat' | 'settings' | 'browser' | 'plan'
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [isAgentRunning, setIsAgentRunning] = useState(false);
   // Which plan PlanScreen.js is currently showing - set when a chat reply
@@ -66,13 +65,9 @@ function AppShell() {
   const [frameBase64, setFrameBase64] = useState(null);
   const [awaitingHuman, setAwaitingHuman] = useState(false);
   const [humanReason, setHumanReason] = useState(null);
-  const [browserTabs, setBrowserTabs] = useState([]); // [{tabId, url, title, active}] - kept in sync from 'status' messages; feeds BrowserAgentScreen's address bar (shows the active tab's real URL)
-  // Full-screen browser zoom, owned here since it's shared between
-  // BrowserAgentPiP (renders the actually-zoomed stream) and
-  // BrowserAgentScreen (renders the +/- controls that change it) - two
-  // sibling components, neither a parent of the other. Starts at 50% on
-  // every launch, not wherever a previous session left it.
-  const [browserFullScreenZoom, setBrowserFullScreenZoom] = useState(1);
+  const [browserTabs, setBrowserTabs] = useState([]); // [{tabId, url, title, active}] - kept in sync from 'status' messages; feeds BrowserFullscreen's site pill (shows the active tab's real URL)
+  // Display-side zoom of the streamed frame in BrowserFullscreen.
+  const browserFullScreenZoom = 1;
   const [streamConnected, setStreamConnected] = useState(false);
   const [streamConnectionError, setStreamConnectionError] = useState(null);
 
@@ -130,7 +125,7 @@ function AppShell() {
   // so sendMessage/editMessage/regenerateMessage can all pass the same
   // connection into the orchestrator (see chatStore.js's
   // setAgentSession). Live frame/status events update local state here
-  // so BrowserAgentPiP/BrowserAgentScreen re-render with the latest
+  // so BrowserFullscreen re-renders with the latest
   // stream. browserAgentStream.js's own reconnect-on-close handling
   // covers network blips and PC backend restarts.
   //
@@ -229,33 +224,14 @@ function AppShell() {
     usePlanStore.getState().cancelPlan(planId);
   };
 
-  // Called by ChatScreen (or the PiP's tap-to-expand) to show the
-  // full-screen browser agent view. This does NOT create a new connection -
-  // it just swaps BrowserAgentPiP's own display mode to fullScreen, so
-  // it's the exact same stream, mid-task state and all, just resized. If a
-  // starting url was given (e.g. "open X and do Y"), it's sent as a task
-  // rather than a direct navigation - there's no raw "go to this URL" call
-  // anymore since the PC agent drives its own navigation.
-  const handleOpenBrowserAgent = (url) => {
-    if (url) {
-      streamRef.current.runTask(`Go to ${url}`);
-      setScreen('browserAgent');
-      return;
-    }
-    // No explicit url: this is the globe icon's LONG-press from
-    // ChatScreen.js (a tap there now toggles browser_access_enabled
-    // instead - see that file's browserToggle TouchableOpacity), which
-    // should TOGGLE between full-screen and PiP (long-press again while
-    // already full-screen collapses back to chat + PiP), not always
-    // force full-screen. A url is only ever passed when something else
-    // (e.g. a chat action) explicitly wants full-screen opened, so that
-    // path still always goes full-screen.
-    setScreen((prev) => (prev === 'browserAgent' ? 'chat' : 'browserAgent'));
-  };
-
-  const handleCloseBrowserAgent = () => {
-    setScreen('chat');
-  };
+  // The chat header's desktop icon and the inline BrowserCard's Expand /
+  // Take over all open the same BrowserFullscreen over the ONE App-owned
+  // stream (no new socket). With a live session it shows that session;
+  // with none it shows the idle "connected, waiting for a task" view and
+  // a task field - starting a task there adds the BrowserCard to the chat
+  // via browserCardStore, like any other browser task.
+  const handleOpenBrowser = () => setScreen('browser');
+  const handleCloseBrowser = () => setScreen('chat');
 
   const handleDeleteConversation = (conversation) => {
     Alert.alert(
@@ -348,13 +324,12 @@ function AppShell() {
           {screen === 'chat' && (
             <ChatScreen
               onOpenSidebar={() => setSidebarVisible(true)}
-              onOpenBrowserAgent={handleOpenBrowserAgent}
-              onExpandBrowser={() => setScreen('browserAgent')}
+              onOpenBrowser={handleOpenBrowser}
               browserStream={streamRef.current}
               onOpenPlan={handleOpenPlan}
               onNewChat={handleNewChat}
               activeMode="chat"
-              browserAgentActive={screen === 'browserAgent' || isAgentRunning || awaitingHuman}
+              browserAgentActive={isAgentRunning || awaitingHuman}
             />
           )}
           {screen === 'settings' && (
@@ -375,76 +350,23 @@ function AppShell() {
         </View>
       </SafeAreaView>
 
-      {/* The single persistent BrowserAgentPiP instance - rendered exactly
-          once, at this stable position in the tree, mounted for the
-          entire app lifetime (NOT conditional on
-          preferences.browser_access_enabled - see the connection effect
-          above for why that preference can no longer gate anything: it
-          only ever becomes true AFTER a browsing task has already run
-          once, so gating rendering on it meant a person's very first
-          browsing task ran completely invisibly - no live view, and
-          critically no way to see or respond to a needsHuman/CAPTCHA
-          prompt. `visible` below controls whether it's actually shown,
-          separately from whether it's mounted, so there's still no
-          floating clutter for someone who's never touched browsing:
-          it appears once there's something to see (a task running or
-          awaiting input), once the person's explicitly opened the full
-          screen, or once browsing has been used before). Only its
-          `fullScreen` prop changes after that (resizing/repositioning
-          the same live stream display), never conditionally mounted/
-          unmounted based on `screen`. This is what keeps a single
-          WebSocket connection (and the PC-side Playwright session/
-          history it's attached to) alive across expanding to full
-          screen and back, and across separate browsing tasks given
-          later in the same conversation. Rendered here (outside
-          SafeAreaView, above the chrome overlay below in JSX order) so
-          full-screen mode isn't clipped by safe-area edges and paints
-          underneath the chrome. */}
-      <BrowserAgentPiP
-        visible={screen === 'browserAgent' /* compact floating PiP retired - the inline chat BrowserCard (src/components/BrowserCard.js) replaces it; this instance now only renders the fullscreen view */}
+      {/* Browser fullscreen (expanded BrowserCard). Drawn outside
+          SafeAreaView so it covers the whole screen; the WebSocket lives in
+          streamRef and stays open whether or not this is shown. */}
+      <BrowserFullscreen
+        visible={screen === 'browser'}
+        theme={theme}
         stream={streamRef.current}
-        fullScreen={screen === 'browserAgent'}
-        fullScreenZoom={browserFullScreenZoom}
         isRunning={isAgentRunning}
         awaitingHuman={awaitingHuman}
         humanReason={humanReason}
         frameBase64={frameBase64}
         connected={streamConnected}
         connectionError={streamConnectionError}
-        onExpand={() => setScreen('browserAgent')}
-        onResumeAfterHuman={() => streamRef.current.resumeAfterHuman()}
+        tabs={browserTabs}
+        zoom={browserFullScreenZoom}
+        onClose={handleCloseBrowser}
       />
-
-      {/* Full-screen browser chrome (just the task input bar now - see
-          BrowserAgentScreen.js's header for why the old status strip,
-          tab strip, address bar, zoom controls, and close button are
-          all gone) - drawn as chrome ONLY, layered on top of the
-          BrowserAgentPiP above (later in JSX order = painted on top)
-          since it does not render its own copy of the live view - it
-          shares the same stream connection the PiP already owns.
-          Rendered once and kept mounted for the app's lifetime
-          unconditionally (same reasoning as BrowserAgentPiP above -
-          gating this on browser_access_enabled meant tapping through to
-          the full-screen view before that flag was ever set rendered
-          nothing at all), only hidden via pointerEvents + a conditional
-          wrapper style rather than being unmounted when `screen` leaves
-          'browserAgent', so any in-progress typed task text isn't lost
-          on a quick back-and-forth. Leaving this screen is now the
-          Android hardware/gesture back button only (see
-          BrowserAgentScreen.js's own BackHandler effect) - onClose
-          below is what it calls. */}
-      <View
-        style={screen === 'browserAgent' ? StyleSheet.absoluteFill : styles.offscreen}
-        pointerEvents={screen === 'browserAgent' ? 'box-none' : 'none'}
-      >
-        <BrowserAgentScreen
-          stream={streamRef.current}
-          isAgentRunning={isAgentRunning}
-          awaitingHuman={awaitingHuman}
-          tabs={browserTabs}
-          onClose={handleCloseBrowserAgent}
-        />
-      </View>
 
       <SidebarDrawer
         visible={sidebarVisible}
@@ -523,17 +445,5 @@ const styles = StyleSheet.create({
   resumeBannerDismissText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  // Keeps BrowserAgentScreen mounted (so its address-bar/tab-strip state
-  // survives) while visually and interactively out of the way when the
-  // person isn't looking at it. Off-screen rather than opacity:0 so it
-  // never intercepts touches meant for the chat screen underneath.
-  offscreen: {
-    position: 'absolute',
-    top: -10000,
-    left: 0,
-    width: 1,
-    height: 1,
-    overflow: 'hidden',
   },
 });

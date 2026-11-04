@@ -56,7 +56,7 @@ export function StatusPill({ theme, phase }) {
   );
 }
 
-function Ctl({ theme, icon, label, onPress, tone, primary }) {
+function Ctl({ theme, icon, label, onPress, tone, primary, iconOnly }) {
   const color = tone === 'danger' ? theme.danger : primary ? '#FFFFFF' : theme.textPrimary;
   return (
     <TouchableOpacity
@@ -66,7 +66,7 @@ function Ctl({ theme, icon, label, onPress, tone, primary }) {
       accessibilityLabel={label}
     >
       <Ionicons name={icon} size={15} color={color} />
-      <Text style={[styles.ctlText, { color }]}>{label}</Text>
+      {iconOnly ? null : <Text style={[styles.ctlText, { color }]}>{label}</Text>}
     </TouchableOpacity>
   );
 }
@@ -129,7 +129,7 @@ export default function BrowserCard({ card, theme, stream, onExpand, onToggleCol
             <Text style={[styles.caption, { color: theme.textPrimary }]} numberOfLines={2}>{caption}</Text>
           </View>
           <View style={styles.ctls}>
-            <Ctl theme={theme} icon="expand-outline" label="Expand" onPress={onExpand} />
+            <Ctl theme={theme} icon="expand-outline" label="Expand" iconOnly onPress={onExpand} />
             {phase === CARD_PHASE.PAUSED && <Ctl theme={theme} icon="hand-left-outline" label="Take over" onPress={onExpand} />}
             {phase === CARD_PHASE.PAUSED && <Ctl theme={theme} icon="play" label="Resume" primary onPress={() => stream?.resumeAfterHuman()} />}
             {(phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED) && (
