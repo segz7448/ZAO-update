@@ -443,7 +443,7 @@ function formatBrowsingStepLabel(stepInfo) {
   }
 }
 
-export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
+export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, onTakeOverBrowser, browserStream = null, onNewChat, browserAgentActive = false, userName = 'there', activeMode = 'chat' }) {
   const theme = useTheme();
   // Inline browser cards (browserCardStore, fed by App's one BrowserAgentStream).
   const browserCards = useBrowserCardStore((s) => s.cards);
@@ -758,6 +758,7 @@ export default function ChatScreen({ onOpenSidebar, onOpenPlan, onOpenBrowser, b
             theme={theme}
             stream={browserStream}
             onExpand={onOpenBrowser}
+            onTakeOver={onTakeOverBrowser}
             onToggleCollapsed={() => toggleBrowserCard(item.card.id)}
             onStopRequested={() => dispatchBrowserCard({ type: 'stopRequested' })}
           />

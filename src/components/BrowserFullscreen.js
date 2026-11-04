@@ -8,16 +8,19 @@
  *   top:    round collapse chevron, site pill (tap to type a URL), square
  *           Stop (stream.cancel) while a task runs or waits on you
  *   page:   the live frame in a rounded sheet (tappable during takeover)
- *   bottom: "Type into page…" + "Done - hand back" during takeover
- *           (manualType / manualKey('Enter') / resumeAfterHuman), the
- *           current step while running, or a new-task field when idle.
- * One bottom bar only, so takeover and task input never overlap.
+ *   bottom: a live status pill streaming the agent's current step, plus a
+ *           Take over chip (highlighted when the agent needs a human).
+ *           Take over makes the page tappable (manualClick) and turns the
+ *           chip into Done, which hands back via resumeAfterHuman when the
+ *           agent was waiting. No visible text fields: tapping the page
+ *           in takeover focuses a hidden TextInput, so the soft keyboard
+ *           types via manualType / manualKey.
+ * Tasks always come from the chat.
  * When no task has run yet, BrowserStreamView shows its idle
- * "Connected - waiting for a task" placeholder; starting a task here makes
- * browserCardStore add the inline card to the chat (same as any task).
+ * "Connected - waiting for a task" placeholder.
  */
-import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, BackHandler, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, BackHandler, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import BrowserStreamView from '../services/browserAgent/BrowserStreamView';
@@ -29,10 +32,12 @@ import { useBrowserCardStore } from '../store/browserCardStore';
 export default function BrowserFullscreen({
   visible, stream, theme, isRunning = false, awaitingHuman = false, humanReason = null,
   frameBase64 = null, connected = false, connectionError = null, tabs = [], zoom = 1, onClose,
+  startInTakeover = false,
 }) {
   const insets = useSafeAreaInsets();
-  const [taskText, setTaskText] = useState('');
-  const [manualText, setManualText] = useState('');
+  const [takeover, setTakeover] = useState(false); // manual control: page taps are forwarded
+  const [kbValue, setKbValue] = useState(''); // hidden keyboard sink (no visible text box)
+  const kbRef = useRef(null);
   const [addressText, setAddressText] = useState('');
   const [editingAddress, setEditingAddress] = useState(false);
   const dispatchCard = useBrowserCardStore((s) => s.dispatch);
@@ -47,18 +52,42 @@ export default function BrowserFullscreen({
     return () => sub.remove();
   }, [visible, onClose]);
 
+  // Opened from the card's Take over, or the agent asked for a human ->
+  // enter manual control. Leaving the screen ends it.
+  useEffect(() => { if (visible && startInTakeover) setTakeover(true); }, [visible, startInTakeover]);
+  useEffect(() => { if (!visible) { setTakeover(false); setKbValue(''); } }, [visible]);
+
   if (!visible) return null;
 
-  const sendTask = () => {
-    const t = taskText.trim();
-    if (!t || !stream) return;
-    haptic.light();
-    stream.runTask(t);
-    setTaskText('');
-  };
   const stop = () => { haptic.warning(); if (stream?.cancel()) dispatchCard({ type: 'stopRequested' }); };
   const submitAddress = () => { if (addressText.trim()) stream?.navigateTo(addressText.trim()); setEditingAddress(false); };
-  const sendManual = () => { if (!manualText.trim()) return; stream?.manualType(manualText); setManualText(''); };
+  const hasSession = connected && (isRunning || awaitingHuman || !!activeCard && !['done', 'stopped', 'error'].includes(activeCard.phase));
+  const canTakeOver = isRunning || awaitingHuman;
+  const startTakeover = () => { haptic.medium(); setTakeover(true); };
+  // Done: only send resumeAfterHuman when the agent is actually waiting on
+  // a human - sending it mid-run would start a second model loop on the PC.
+  const finishTakeover = () => {
+    haptic.success();
+    kbRef.current?.blur();
+    setTakeover(false);
+    setKbValue('');
+    if (awaitingHuman) stream?.resumeAfterHuman();
+  };
+  // Hidden TextInput -> manualType / manualKey. Diffing the value lets the
+  // soft keyboard work without a visible box: additions are typed,
+  // deletions become Backspace presses, return becomes Enter.
+  const onKbChange = (next) => {
+    if (next.length > kbValue.length && next.startsWith(kbValue)) stream?.manualType(next.slice(kbValue.length));
+    else if (next.length < kbValue.length) for (let i = 0; i < kbValue.length - next.length; i += 1) stream?.manualKey('Backspace');
+    else if (next !== kbValue) stream?.manualType(next);
+    setKbValue(next);
+  };
+  const statusText = !connected
+    ? (connectionError ? 'Not connected to the PC' : 'Reconnecting…')
+    : takeover ? 'You have control - tap the page'
+    : awaitingHuman ? (humanReason ? `Needs you: ${humanReason}` : 'Needs you to take over')
+    : isRunning ? (activeCard?.caption || 'Working on it…')
+    : hasSession ? (activeCard?.caption || 'Idle') : 'Waiting for a task from chat';
 
   const domain = domainFromUrl(currentUrl);
   const active = isRunning || awaitingHuman;
@@ -95,42 +124,36 @@ export default function BrowserFullscreen({
         ) : <View style={styles.round} />}
       </View>
 
-      {/* live page in a rounded sheet */}
-      <View style={styles.page}>
-        <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={awaitingHuman} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} />
-        {awaitingHuman && humanReason ? (
-          <View style={styles.reason}><Ionicons name="hand-left" size={14} color="#FFD60A" /><Text style={styles.reasonText} numberOfLines={2}>{humanReason}</Text></View>
+      {/* live page in a rounded sheet; taps are forwarded only in takeover */}
+      <View style={styles.page} onTouchEnd={takeover ? () => kbRef.current?.focus() : undefined}>
+        <BrowserStreamView frameBase64={frameBase64} stream={stream} interactive={takeover} connected={connected} connectionError={connectionError} isRunning={isRunning} zoom={zoom} />
+        {awaitingHuman && !takeover ? (
+          <View style={styles.reason} pointerEvents="none"><Ionicons name="hand-left" size={14} color="#FFD60A" /><Text style={styles.reasonText} numberOfLines={2}>{humanReason || 'The agent needs you to take over.'}</Text></View>
         ) : null}
       </View>
+      {takeover ? (
+        <TextInput ref={kbRef} value={kbValue} onChangeText={onKbChange} onSubmitEditing={() => stream?.manualKey('Enter')} blurOnSubmit={false}
+          autoCapitalize="none" autoCorrect={false} caretHidden style={styles.kbSink} accessibilityElementsHidden importantForAccessibility="no" />
+      ) : null}
 
-      {/* bottom field: takeover (Type into page… + Done - hand back), running caption, or new task */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.bar, glass, { marginBottom: Math.max(10, insets.bottom) }]}>
+      {/* bottom: live status pill streaming the current step + Take over / Done chip */}
+      <View style={[styles.bottomRow, { marginBottom: Math.max(10, insets.bottom) }]}>
+        <View style={[styles.bar, glass]}>
           <Glass r={28} />
-          {awaitingHuman ? (
-            <>
-              <TextInput style={styles.barInput} value={manualText} onChangeText={setManualText} placeholder="Type into page…" placeholderTextColor="#8E8E93"
-                returnKeyType="send" onSubmitEditing={() => { if (manualText.trim()) sendManual(); else stream?.manualKey('Enter'); }} />
-              <TouchableOpacity onPress={() => { haptic.success(); if (manualText.trim()) sendManual(); stream?.resumeAfterHuman(); }} style={styles.done} accessibilityLabel="Done - hand back to the agent">
-                <Ionicons name="checkmark" size={16} color="#fff" /><Text style={styles.doneText}>Done - hand back</Text>
-              </TouchableOpacity>
-            </>
-          ) : isRunning ? (
-            <View style={styles.workingRow}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.workingText} numberOfLines={1}>{activeCard?.caption || 'Working on it…'}</Text>
-            </View>
-          ) : (
-            <>
-              <TextInput style={styles.barInput} value={taskText} onChangeText={setTaskText} onSubmitEditing={sendTask}
-                placeholder="Tell the browser what to do…" placeholderTextColor="#8E8E93" returnKeyType="go" />
-              <TouchableOpacity onPress={sendTask} accessibilityLabel="Start browser task" style={[styles.send, { backgroundColor: taskText.trim() ? '#0A84FF' : 'rgba(255,255,255,0.12)' }]}>
-                <Ionicons name="arrow-up" size={18} color="#fff" />
-              </TouchableOpacity>
-            </>
-          )}
+          {isRunning && !takeover ? <ActivityIndicator size="small" color="#fff" /> : <View style={[styles.dot, { backgroundColor: takeover ? '#0A84FF' : awaitingHuman ? '#FFD60A' : hasSession ? '#30D158' : '#8E8E93' }]} />}
+          <Text style={styles.workingText} numberOfLines={1}>{statusText}</Text>
         </View>
-      </KeyboardAvoidingView>
+        {takeover ? (
+          <TouchableOpacity onPress={finishTakeover} style={[styles.chip, styles.chipPrimary]} accessibilityRole="button" accessibilityLabel="Done - hand control back">
+            <Ionicons name="checkmark" size={16} color="#fff" /><Text style={styles.chipText}>Done</Text>
+          </TouchableOpacity>
+        ) : canTakeOver ? (
+          <TouchableOpacity onPress={startTakeover} style={[styles.chip, glass, awaitingHuman && styles.chipAlert]} accessibilityRole="button" accessibilityLabel="Take over the browser">
+            {awaitingHuman ? null : <Glass r={28} />}<Ionicons name="hand-left-outline" size={16} color={awaitingHuman ? '#1C1C1E' : '#fff'} />
+            <Text style={[styles.chipText, awaitingHuman && { color: '#1C1C1E' }]}>Take over</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -146,11 +169,13 @@ const styles = StyleSheet.create({
   page: { flex: 1, marginHorizontal: 10, borderRadius: 16, overflow: 'hidden', backgroundColor: '#fff' },
   reason: { position: 'absolute', left: 10, right: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.75)' },
   reasonText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600' },
-  bar: { marginHorizontal: 10, marginTop: 10, minHeight: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6, gap: 8, overflow: 'hidden' },
-  barInput: { flex: 1, color: '#fff', fontSize: 16, paddingVertical: 10 },
-  done: { height: 40, borderRadius: 20, paddingHorizontal: 14, backgroundColor: '#0A84FF', flexDirection: 'row', alignItems: 'center', gap: 6 },
-  doneText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  send: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  workingRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 16 },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginTop: 10 },
+  bar: { flex: 1, height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, gap: 10, overflow: 'hidden' },
+  dot: { width: 9, height: 9, borderRadius: 5 },
+  chip: { height: 56, borderRadius: 28, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden' },
+  chipPrimary: { backgroundColor: '#0A84FF' },
+  chipAlert: { backgroundColor: '#FFD60A', borderColor: '#FFD60A' },
+  chipText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  kbSink: { position: 'absolute', width: 1, height: 1, opacity: 0, left: -10, bottom: 0 },
   workingText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '500' },
 });

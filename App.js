@@ -230,8 +230,10 @@ function AppShell() {
   // with none it shows the idle "connected, waiting for a task" view and
   // a task field - starting a task there adds the BrowserCard to the chat
   // via browserCardStore, like any other browser task.
-  const handleOpenBrowser = () => setScreen('browser');
-  const handleCloseBrowser = () => setScreen('chat');
+  const [browserTakeover, setBrowserTakeover] = useState(false); // open fullscreen straight into manual control (card's Take over)
+  const handleOpenBrowser = () => { setBrowserTakeover(false); setScreen('browser'); };
+  const handleTakeOverBrowser = () => { setBrowserTakeover(true); setScreen('browser'); };
+  const handleCloseBrowser = () => { setBrowserTakeover(false); setScreen('chat'); };
 
   const handleDeleteConversation = (conversation) => {
     Alert.alert(
@@ -325,6 +327,7 @@ function AppShell() {
             <ChatScreen
               onOpenSidebar={() => setSidebarVisible(true)}
               onOpenBrowser={handleOpenBrowser}
+              onTakeOverBrowser={handleTakeOverBrowser}
               browserStream={streamRef.current}
               onOpenPlan={handleOpenPlan}
               onNewChat={handleNewChat}
@@ -365,6 +368,7 @@ function AppShell() {
         connectionError={streamConnectionError}
         tabs={browserTabs}
         zoom={browserFullScreenZoom}
+        startInTakeover={browserTakeover}
         onClose={handleCloseBrowser}
       />
 

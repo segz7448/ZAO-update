@@ -4,10 +4,10 @@ import { useBrowserCardStore, attachBrowserCardStream } from '../../../store/bro
 const card = () => initialCard({ id: 'c1', conversationId: 'conv', anchorMessageId: 'm1', now: 0 });
 
 describe('browserCardState', () => {
-  test('pill mapping covers Live/Working/Paused/Done', () => {
+  test('pill mapping covers Live/Working/Needs you/Done', () => {
     expect(statusPill(CARD_PHASE.LIVE).label).toBe('Live');
     expect(statusPill(CARD_PHASE.WORKING).label).toBe('Working');
-    expect(statusPill(CARD_PHASE.PAUSED).label).toBe('Paused');
+    expect(statusPill(CARD_PHASE.PAUSED).label).toBe('Needs you');
     expect(statusPill(CARD_PHASE.DONE)).toMatchObject({ label: 'Done', pulse: false });
   });
   test('status updates title/url from active tab and running/awaitingHuman', () => {

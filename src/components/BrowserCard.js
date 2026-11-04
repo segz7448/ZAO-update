@@ -4,11 +4,12 @@
  * started; shows the real streamed frames, a live status pill, the current
  * action, and controls wired to EXISTING BrowserAgentStream actions only:
  *   Expand   -> App's full browserAgent screen (same stream, no new socket)
- *   Take over-> opens fullscreen while awaitingHuman (its ManualControlBar
- *               sends manualClick/manualType/manualKey)
- *   Resume   -> stream.resumeAfterHuman()   ({type:'resumeAfterHuman'})
+ *   Take over-> opens fullscreen in manual control (page taps -> manualClick,
+ *               keyboard -> manualType/manualKey); its Done chip hands back
+ *               via stream.resumeAfterHuman() when the agent was waiting
  *   Stop     -> stream.cancel()             ({type:'cancel'})
- * There is no Pause control: the server protocol has no pause message.
+ * No Pause/Resume controls: the server protocol has no pause message, and
+ * resuming happens from fullscreen's Done.
  * State comes from browserCardStore (fed by the stream - no polling).
  */
 import React, { useEffect, useRef } from 'react';
@@ -71,7 +72,7 @@ function Ctl({ theme, icon, label, onPress, tone, primary, iconOnly }) {
   );
 }
 
-export default function BrowserCard({ card, theme, stream, onExpand, onToggleCollapsed, onStopRequested, onLayout }) {
+export default function BrowserCard({ card, theme, stream, onExpand, onTakeOver, onToggleCollapsed, onStopRequested, onLayout }) {
   const { phase, title, url, caption, lastFrame, collapsed } = card;
   const domain = domainFromUrl(url);
   const live = phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED || phase === CARD_PHASE.LIVE || phase === CARD_PHASE.RECONNECTING;
@@ -130,8 +131,9 @@ export default function BrowserCard({ card, theme, stream, onExpand, onToggleCol
           </View>
           <View style={styles.ctls}>
             <Ctl theme={theme} icon="expand-outline" label="Expand" iconOnly onPress={onExpand} />
-            {phase === CARD_PHASE.PAUSED && <Ctl theme={theme} icon="hand-left-outline" label="Take over" onPress={onExpand} />}
-            {phase === CARD_PHASE.PAUSED && <Ctl theme={theme} icon="play" label="Resume" primary onPress={() => stream?.resumeAfterHuman()} />}
+            {(phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED) && (
+              <Ctl theme={theme} icon="hand-left-outline" label="Take over" primary={phase === CARD_PHASE.PAUSED} onPress={() => (onTakeOver || onExpand)?.()} />
+            )}
             {(phase === CARD_PHASE.WORKING || phase === CARD_PHASE.PAUSED) && (
               <Ctl theme={theme} icon="stop-circle-outline" label="Stop" tone="danger" onPress={() => { haptic.warning(); if (stream?.cancel()) onStopRequested?.(); }} />
             )}
@@ -171,7 +173,7 @@ const styles = StyleSheet.create({
   expandBadge: { position: 'absolute', right: 8, top: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
   caption: { flex: 1, fontSize: 14, fontWeight: '500' },
-  ctls: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  ctls: { flexDirection: 'row', gap: 6 },
   ctl: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 10, borderRadius: 17, borderWidth: 1 },
   ctlText: { fontSize: 14, fontWeight: '600' },
   mini: { position: 'absolute', top: 6, alignSelf: 'center', maxWidth: '86%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 6, paddingRight: 6, height: 38, zIndex: 20 },

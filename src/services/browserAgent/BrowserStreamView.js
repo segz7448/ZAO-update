@@ -134,7 +134,7 @@ export default function BrowserStreamView({ frameBase64, stream, interactive = f
               ? connectionError || "Can't reach the PC backend - check Settings > Backend Connection"
               : isRunning
               ? 'Connecting to the live view…'
-              : "Connected - waiting for a task. Type one below and tap Send."}
+              : "Connected - waiting for a task from chat."}
           </Text>
         </View>
       )}

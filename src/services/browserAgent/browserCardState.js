@@ -25,7 +25,7 @@ export const TERMINAL_PHASES = new Set([CARD_PHASE.DONE, CARD_PHASE.STOPPED, CAR
 export function statusPill(phase) {
   switch (phase) {
     case CARD_PHASE.WORKING: return { label: 'Working', tone: 'brand', pulse: true };
-    case CARD_PHASE.PAUSED: return { label: 'Paused', tone: 'warning', pulse: true };
+    case CARD_PHASE.PAUSED: return { label: 'Needs you', tone: 'warning', pulse: true };
     case CARD_PHASE.RECONNECTING: return { label: 'Reconnecting', tone: 'neutral', pulse: true };
     case CARD_PHASE.DONE: return { label: 'Done', tone: 'success', pulse: false };
     case CARD_PHASE.STOPPED: return { label: 'Stopped', tone: 'neutral', pulse: false };
